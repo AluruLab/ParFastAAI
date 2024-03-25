@@ -28,12 +28,20 @@ struct ETriple {
 	ETriple(const int proteinIndexVal, const int genomeAVal, const int genomeBVal) : proteinIndex(proteinIndexVal), genomeA(genomeAVal), genomeB(genomeBVal) {}
 };
 
+struct JACTuple {
+	int genomeA;
+	int genomeB;
+	int S;
+	int N;
+};
+
 int constructLcandLp(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<int>& Lc, std::vector<int>& Lp);
 int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::pair<int, int>>& F,
 	std::vector<int>& Lc, std::vector<int>& Lp);
 int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::vector<int>>& T);
 bool customSortE(const ETriple& firstElement, const ETriple& secondElement);
 void parallelMergeSort(std::vector<ETriple>& E, int left, int right, int serialThreshold);
+int genomePairToJACIndex(int genomeA, int genomeB);
 
 int main()
 {
@@ -70,7 +78,7 @@ int main()
 	//			"pf00344.20", "pf00831.23", "pf00334.19", "pf00830.19", "pf00861.22", "pf00453.18",
 	//			"pf00181.23", "pf03652.15" };
 
-	std::vector<std::string> proteinSet = { "pf00121.18" }; // { "pf00347.23", "pf00411.19" };
+	std::vector<std::string> proteinSet = { "pf00347.23" }; // { "pf00121.18", "pf00411.19" };
 
     std::vector<int> Lc;
     std::vector<int> Lp;
@@ -113,8 +121,12 @@ int main()
 	std::vector<int> EChunkStartIndex;
 	int ESize = 0;
 
+	std::vector<JACTuple> JAC;
+	std::vector<int> genomePairEStartIndex;
+	std::vector<int> genomePairEEndIndex;
+
 	#pragma omp parallel default(none) \
-	shared(Lc, Lp, F, T, E, EChunkSize, EChunkStartIndex, tetramerStartDistribution, tetramerEndDistribution, slack_percentage, totalNumThreads, ESize, std::cout)
+	shared(Lc, Lp, F, T, E, JAC, EChunkSize, EChunkStartIndex, genomePairEStartIndex, genomePairEEndIndex, tetramerStartDistribution, tetramerEndDistribution, slack_percentage, totalNumThreads, ESize, std::cout)
 	{
 		/** PHASE 2: Generate tetramer tuples **/
 
@@ -286,7 +298,150 @@ int main()
 			std::cout << "Done with constructing E" << std::endl;
 			// Sort E
 			parallelMergeSort(E, 0, E.size() - 1, 5);
+
+			//// Print out E
+			//std::cout << "E array ordered by thread chunks: " << std::endl;
+			//for (int i = 0; i < totalNumThreads; i++) {
+			//	std::cout << "Thread " << i << ": ";
+			//	int startIndex = EChunkStartIndex[i];
+			//	int chunkSize = EChunkSize[i];
+
+			//	for (int j = 0; j < chunkSize; j++) {
+			//		std::cout << "(" << E[startIndex + j].genomeA << ", " << E[startIndex + j].genomeB << ", " << E[startIndex + j].proteinIndex << ")   ";
+			//	}
+			//	std::cout << std::endl << std::endl;
+			//}
 		}
+
+		/** PHASE 3: Compute the Jaccard Coefficient values **/
+
+		// Prepare the JAC vector
+		int totalGenomePairs = GENOME_COUNT * (GENOME_COUNT - 1) / 2;
+
+		#pragma omp single
+		{
+			JAC.resize(totalGenomePairs);
+			genomePairEStartIndex.resize(totalGenomePairs);
+			genomePairEEndIndex.resize(totalGenomePairs);
+
+			int genomeA = 0;
+			int genomeB = 1;
+
+			for (int i = 0; i < JAC.size(); i++) {
+				JAC[i].genomeA = genomeA;
+				JAC[i].genomeB = genomeB;
+				JAC[i].S = 0;
+				JAC[i].N = 0;
+
+				if (genomeB == GENOME_COUNT - 1) {
+					genomeA += 1;
+					genomeB = genomeA + 1;
+				} else {
+					genomeB += 1;
+				}
+			}
+		}
+
+		// Chunks of JAC this thread is responsible for - INCLUSIVE bounds
+		int genomePairStartIndex = -1;
+		int genomePairEndIndex = -1;
+
+		if (threadID < totalGenomePairs % totalNumThreads) {
+			// Each will be responsible for totalGenomePairs / totalNumThreads + 1 pairs
+			genomePairStartIndex = threadID * (totalGenomePairs / totalNumThreads + 1);
+			genomePairEndIndex = (threadID + 1) * (totalGenomePairs / totalNumThreads + 1) - 1;
+		} else {
+			int buffer = (totalGenomePairs % totalNumThreads) * (totalGenomePairs / totalNumThreads + 1);
+			genomePairStartIndex = buffer + (threadID - totalGenomePairs % totalNumThreads) * (totalGenomePairs / totalNumThreads);
+			genomePairEndIndex = buffer + (threadID - totalGenomePairs % totalNumThreads + 1) * (totalGenomePairs / totalNumThreads) - 1;
+		}
+
+		// We need to know where in the sorted E does each genome pair start and end
+		// Each thread can look though its local chunk of E and help fill in the 2 arrays: genomePairEStartIndex, genomePairEEndIndex
+		currentLocalEIndex = EChunkStartIndex[threadID];
+		// Edge case - First genome pair seen in the local E chunk. It might not start here
+		if (currentLocalEIndex > 0) {
+			ETriple firstElement = E[currentLocalEIndex];
+			ETriple lastElementPrevThread = E[currentLocalEIndex - 1];
+			if (firstElement.genomeA != lastElementPrevThread.genomeA || firstElement.genomeB != lastElementPrevThread.genomeB) {
+				// Then this means we hold the beginning of this genome pair
+				// Safely write this information into the genomePairEStartIndex array
+				int genomePairIndexInJAC = genomePairToJACIndex(firstElement.genomeA, firstElement.genomeB);
+				genomePairEStartIndex[genomePairIndexInJAC] = currentLocalEIndex;
+			} // Otherwise, let the previous processor fill in the starting index
+		} else {
+			// currentLocalEIndex == 0
+			// Safely write the beginning of the current genome pair index into genomePairEStartIndex array
+			ETriple firstElement = E[currentLocalEIndex];
+			int genomePairIndexInJAC = genomePairToJACIndex(firstElement.genomeA, firstElement.genomeB);
+			genomePairEStartIndex[genomePairIndexInJAC] = 0;
+		}
+
+		while (currentLocalEIndex < EChunkStartIndex[threadID] + EChunkSize[threadID]) {
+			int currentGenomeA = E[currentLocalEIndex].genomeA;
+			int currentGenomeB = E[currentLocalEIndex].genomeB;
+
+			while (currentLocalEIndex < EChunkStartIndex[threadID] + EChunkSize[threadID] && E[currentLocalEIndex].genomeA == currentGenomeA
+				&& E[currentLocalEIndex].genomeB == currentGenomeB) {
+				currentLocalEIndex++;
+			}
+
+			if (currentLocalEIndex < EChunkStartIndex[threadID] + EChunkSize[threadID]) {
+				// Found the end index of the current genome pair
+				// Safely write this information into the genomePairEEndIndex array
+				int genomePairIndexInJAC = genomePairToJACIndex(currentGenomeA, currentGenomeB);
+				genomePairEEndIndex[genomePairIndexInJAC] = currentLocalEIndex - 1;
+
+				// Move on to the next pair
+				// This means we are seeing the start index of a new genome pair
+				// Safely write this information into the genomePairEStartIndex array
+				genomePairIndexInJAC = genomePairToJACIndex(E[currentLocalEIndex].genomeA, E[currentLocalEIndex].genomeB);
+				genomePairEStartIndex[genomePairIndexInJAC] = currentLocalEIndex;
+			} else {
+				// currentLocalEIndex == EChunkStartIndex[threadID] + EChunkSize[threadID]
+				// This means we've parsed our local E Chunk fully.
+				// However, we still need to check if we have seen the end of the current genome pair. If yes, we must write this information
+				// If our local E chunk doesn't store the end of the current genome pair, leave it to the next processor to fill this information
+
+				if (currentLocalEIndex < E.size()) {
+					ETriple firstElementOfNextThread = E[currentLocalEIndex];
+
+					if (firstElementOfNextThread.genomeA != currentGenomeA || firstElementOfNextThread.genomeB != currentGenomeB) {
+						// We have seen the end of the current genome pair
+						// Safely write this information into genomePairEEndIndex array
+						int genomePairIndexInJAC = genomePairToJACIndex(currentGenomeA, currentGenomeB);
+						genomePairEEndIndex[genomePairIndexInJAC] = currentLocalEIndex - 1;
+					} // Otherwise, this information will be filled by the next processor
+				} else {
+					// currentLocalEIndex == E.size()
+					int genomePairIndexInJAC = genomePairToJACIndex(currentGenomeA, currentGenomeB);
+					genomePairEEndIndex[genomePairIndexInJAC] = E.size() - 1;
+				}
+			}
+		}
+
+		//#pragma omp single
+		//{
+		//	std::cout << "Finished processing start and end index of pairs of genomes in E" << std::endl;
+		//	std::cout << "First, E (Ga, Gb, ProteinID) is: ";
+		//	for (int i = 0; i < E.size(); i++) {
+		//		std::cout << "(" << E[i].genomeA << ", " << E[i].genomeB << ", " << E[i].proteinIndex << "   ";
+		//	}
+		//	std::cout << std::endl << std::endl;
+
+
+		//	std::cout << "Each pair of genome STARTS at:" << std::endl;
+		//	for (int i = 0; i < genomePairEStartIndex.size(); i++) {
+		//		std::cout << "Genome (" << JAC[i].genomeA << ", " << JAC[i].genomeB << "): " << genomePairEStartIndex[i] << std::endl;
+		//	}
+		//	std::cout << std::endl << std::endl;
+
+		//	std::cout << "Each pair of genome ENDS at:" << std::endl;
+		//	for (int i = 0; i < genomePairEEndIndex.size(); i++) {
+		//		std::cout << "Genome (" << JAC[i].genomeA << ", " << JAC[i].genomeB << "): " << genomePairEEndIndex[i] << std::endl;
+		//	}
+		//	std::cout << std::endl << std::endl;
+		//}
 	}
 
     return SUCCESS;
@@ -568,4 +723,9 @@ void parallelMergeSort(std::vector<ETriple>& E, int left, int right, int serialT
 			std::copy(temp.begin(), temp.end(), E.begin() + left);
 		}
 	}
+}
+
+int genomePairToJACIndex(int genomeA, int genomeB) {
+	// (37/2) * a - a^2 / 2 + b - 1
+	return (37 * genomeA - genomeA * genomeA) / 2 + genomeB - 1;
 }
