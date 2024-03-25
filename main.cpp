@@ -15,23 +15,25 @@
 #define ERROR_SQLITE_DATABASE 1
 #define ERROR_SQLITE_MEMORY_ALLOCATION 2
 #define ERROR_IN_CONSTRUCTION 3
-#define TETRAMER_COUNT 160000
+#define TETRAMER_COUNT 2000
 #define GENOME_COUNT 20
 #define SLACK_PERCENTAGE 0.0
-
-int constructLcandLp(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<int>& Lc, std::vector<int>& Lp);
-int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::pair<int, int>>& F,
-	std::vector<int>& Lc, std::vector<int>& Lp);
-int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::vector<int>>& T);
 
 struct ETriple {
 	int proteinIndex;
 	int genomeA;
 	int genomeB;
 
-	ETriple(): proteinIndex(-1), genomeA(-1), genomeB(-1) {}
-	ETriple(const int proteinIndexVal, const int genomeAVal, const int genomeBVal): proteinIndex(proteinIndexVal), genomeA(genomeAVal), genomeB(genomeBVal) {}
+	ETriple() : proteinIndex(-1), genomeA(-1), genomeB(-1) {}
+	ETriple(const int proteinIndexVal, const int genomeAVal, const int genomeBVal) : proteinIndex(proteinIndexVal), genomeA(genomeAVal), genomeB(genomeBVal) {}
 };
+
+int constructLcandLp(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<int>& Lc, std::vector<int>& Lp);
+int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::pair<int, int>>& F,
+	std::vector<int>& Lc, std::vector<int>& Lp);
+int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::vector<int>>& T);
+bool customSortE(const ETriple& firstElement, const ETriple& secondElement);
+void parallelMergeSort(std::vector<ETriple>& E, int left, int right, int serialThreshold);
 
 int main()
 {
@@ -282,6 +284,8 @@ int main()
 		#pragma omp single
 		{
 			std::cout << "Done with constructing E" << std::endl;
+			// Sort E
+			parallelMergeSort(E, 0, E.size() - 1, 5);
 		}
 	}
 
@@ -529,4 +533,39 @@ int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 		return errorCodeFound;
 	}
 	return SUCCESS;
+}
+
+bool customSortE(const ETriple& firstElement, const ETriple& secondElement) {
+	if (firstElement.genomeA != secondElement.genomeA) {
+		return firstElement.genomeA < secondElement.genomeA;
+	}
+
+	if (firstElement.genomeB != secondElement.genomeB) {
+		return firstElement.genomeB < secondElement.genomeB;
+	}
+
+	return firstElement.proteinIndex < secondElement.proteinIndex;
+}
+
+void parallelMergeSort(std::vector<ETriple>& E, int left, int right, int serialThreshold) {
+	if (left < right) {
+		if (right - left < serialThreshold) {
+			std::sort(E.begin() + left, E.begin() + right + 1, customSortE);
+		} else {
+			int mid = left + (right - left) / 2;
+
+			#pragma omp task shared(E)
+			parallelMergeSort(E, left, mid, serialThreshold);
+
+			#pragma omp task shared(E)
+			parallelMergeSort(E, mid + 1, right, serialThreshold);
+
+			// We must wait for both tasks to complete before we merge the sorted halves
+			#pragma omp taskwait
+
+			std::vector<ETriple> temp;
+			std::merge(E.begin() + left, E.begin() + mid + 1, E.begin() + mid + 1, E.begin() + right + 1, std::back_inserter(temp), customSortE);
+			std::copy(temp.begin(), temp.end(), E.begin() + left);
+		}
+	}
 }
