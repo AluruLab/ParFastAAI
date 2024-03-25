@@ -17,11 +17,21 @@
 #define ERROR_IN_CONSTRUCTION 3
 #define TETRAMER_COUNT 160000
 #define GENOME_COUNT 20
+#define SLACK_PERCENTAGE 0.0
 
 int constructLcandLp(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<int>& Lc, std::vector<int>& Lp);
 int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::pair<int, int>>& F,
 	std::vector<int>& Lc, std::vector<int>& Lp);
 int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::vector<int>>& T);
+
+struct ETriple {
+	int proteinIndex;
+	int genomeA;
+	int genomeB;
+
+	ETriple(): proteinIndex(-1), genomeA(-1), genomeB(-1) {}
+	ETriple(const int proteinIndexVal, const int genomeAVal, const int genomeBVal): proteinIndex(proteinIndexVal), genomeA(genomeAVal), genomeB(genomeBVal) {}
+};
 
 int main()
 {
@@ -41,6 +51,8 @@ int main()
         return ERROR_SQLITE_MEMORY_ALLOCATION;
     }
 
+	/** PHASE 1: Construction of the data structures **/
+
 	//std::vector<std::string> proteinSet = { "pf00411.19", "pf00237.19", "pf01016.19", "pf02033.18", "pf00347.23", "pf00119.20",
 	//			"pf00297.22", "pf02601.15", "pf00318.20", "pf02367.17", "pf00825.18", "pf02410.15",
 	//			"pf00406.22", "pf00380.19", "pf00213.18", "pf05221.17", "pf00252.18", "pf00177.21",
@@ -54,52 +66,224 @@ int main()
 	//			"pf01264.21", "pf01193.24", "pf00410.19", "pf00584.20", "pf01245.20", "pf02130.17",
 	//			"pf02699.15", "pf01765.19", "pf01783.23", "pf00281.19", "pf00416.22", "pf00366.20",
 	//			"pf00344.20", "pf00831.23", "pf00334.19", "pf00830.19", "pf00861.22", "pf00453.18",
-	//			"pf00181.23", "pf03652.15" }; 
+	//			"pf00181.23", "pf03652.15" };
 
-	std::vector<std::string> proteinSet = { "pf00347.23" }; // { "pf00121.18", "pf00411.19" }; 
+	std::vector<std::string> proteinSet = { "pf00121.18" }; // { "pf00347.23", "pf00411.19" };
 
     std::vector<int> Lc;
     std::vector<int> Lp;
-
-	auto start_time = std::chrono::high_resolution_clock::now();
     errorCode = constructLcandLp(database, proteinSet, Lc, Lp);
-	auto end_time = std::chrono::high_resolution_clock::now();
-
-	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-	std::cout << "Time taken to construct Lc and Lp Parallel = " << duration.count() << " milliseconds."<< std::endl;
 
 	if (errorCode != SUCCESS) {
 		std::cerr << "Error in constructing Lc and Lp, error code = " << errorCode << std::endl;
 		return errorCode;
 	}
+	std::cout << "Done with constructing Lc and Lp" << std::endl;
 
 	std::vector<std::pair<int, int>> F(Lp[TETRAMER_COUNT - 1] + Lc[TETRAMER_COUNT - 1], std::make_pair(-1, -1));
-	start_time = std::chrono::high_resolution_clock::now();
 	errorCode = constructF(database, proteinSet, F, Lc, Lp);
-	end_time = std::chrono::high_resolution_clock::now();
-
-	duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-	std::cout << "Time taken to construct F Parallel = " << duration.count() << " milliseconds." << std::endl;
 
 	if (errorCode != SUCCESS) {
 		std::cerr << "Error in constructing F, error code = " << errorCode << std::endl;
 		return errorCode;
 	}
+	std::cout << "Done with constructing F" << std::endl;
 
 	std::vector<std::vector<int>> T;
-	start_time = std::chrono::high_resolution_clock::now();
 	errorCode = constructT(database, proteinSet, T);
-	end_time = std::chrono::high_resolution_clock::now();
-
-	duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-	std::cout << "Time taken to construct T Parallel = " << duration.count() << " milliseconds." << std::endl;
 
 	if (errorCode != SUCCESS) {
 		std::cerr << "Error in constructing T, error code = " << errorCode << std::endl;
 		return errorCode;
 	}
 
+	std::cout << "Done with constructing T" << std::endl;
+
     sqlite3_close(database);
+
+	std::vector<int> tetramerStartDistribution;
+	std::vector<int> tetramerEndDistribution;
+	int totalNumThreads = -1;
+	float slack_percentage = SLACK_PERCENTAGE;
+
+	std::vector<ETriple> E;
+	std::vector<int> EChunkSize;
+	std::vector<int> EChunkStartIndex;
+	int ESize = 0;
+
+	#pragma omp parallel default(none) \
+	shared(Lc, Lp, F, T, E, EChunkSize, EChunkStartIndex, tetramerStartDistribution, tetramerEndDistribution, slack_percentage, totalNumThreads, ESize, std::cout)
+	{
+		/** PHASE 2: Generate tetramer tuples **/
+
+		// Ask 1 thread to carry out the distribution of tasks, i.e. tetramer tuples for all threads
+		#pragma omp single
+		{
+			totalNumThreads = omp_get_num_threads();
+			tetramerStartDistribution.resize(totalNumThreads, -1);
+			tetramerEndDistribution.resize(totalNumThreads, -1);
+
+			int totalNumberOfTasks = F.size();
+			std::vector<int> taskSumPerThread(totalNumThreads, 0);
+			int targetTasksPerProcessor = ((float)(totalNumberOfTasks) / totalNumThreads) * (1 + slack_percentage);
+
+			int currentThread = 0;
+			for (int tetramer = 0; tetramer < Lc.size(); tetramer++) {
+				int task = Lc[tetramer];
+				if (taskSumPerThread[currentThread] + task <= targetTasksPerProcessor || currentThread == totalNumThreads - 1) {
+					taskSumPerThread[currentThread] += task;
+					if (tetramerStartDistribution[currentThread] == -1) {
+						tetramerStartDistribution[currentThread] = tetramer;
+					}
+					tetramerEndDistribution[currentThread] = tetramer;
+				}
+				else {
+					// Move to the next processor and assign the task there
+					currentThread++;
+					taskSumPerThread[currentThread] += task;
+					tetramerStartDistribution[currentThread] = tetramer;
+					tetramerEndDistribution[currentThread] = tetramer;
+				}
+			}
+
+			EChunkSize.resize(totalNumThreads);
+			EChunkStartIndex.resize(totalNumThreads);
+		}
+
+		// Tetramer tuples specific to this thread
+		int threadID = omp_get_thread_num();
+		int tetramerStart = tetramerStartDistribution[threadID];
+		int tetramerEnd = tetramerEndDistribution[threadID];
+
+		int countElementInE = 0;
+		// Ask a thread to compute its own number of elements in its local part of E
+		for (int tetramerID = tetramerStart; tetramerID <= tetramerEnd; tetramerID++) {
+			// INCLUSIVE start and end index of the tetramer block in F
+			int startIndexInF = Lp[tetramerID];
+			int endIndexInF = 0;
+			if (tetramerID < tetramerEnd) {
+				endIndexInF = Lp[tetramerID + 1] - 1;
+			} else {
+				// tetramerID == tetramerEnd
+				if (tetramerID == TETRAMER_COUNT - 1) {
+					endIndexInF = F.size() - 1;
+				} else {
+					endIndexInF = Lp[tetramerID + 1] - 1;
+				}
+			}
+
+			int currProteinID = F[startIndexInF].first;
+			int leftBoundary = startIndexInF;
+			int rightBoundary = startIndexInF;
+
+			while (rightBoundary <= endIndexInF) {
+				if (F[rightBoundary].first == currProteinID) {
+					rightBoundary++;
+				} else {
+					int n = rightBoundary - leftBoundary;
+					countElementInE += n * (n - 1) / 2;
+
+					currProteinID = F[rightBoundary].first;
+					leftBoundary = rightBoundary;
+				}
+			}
+
+			// Complete the last calculation for when the while loop finishes because rightBoundary > endIndexInF,
+			// but the calculation for currProteinID is not done yet
+			int n = rightBoundary - leftBoundary;
+			countElementInE += n * (n - 1) / 2;
+		}
+
+		EChunkSize[threadID] = countElementInE;
+
+		#pragma omp barrier
+
+		// Get the length of E
+		#pragma omp for reduction(+: ESize)
+		for (int i = 0; i < EChunkSize.size(); i++) {
+			ESize += EChunkSize[i];
+		}
+
+		#pragma omp single
+		{
+			E.resize(ESize);
+		}
+
+		// Get the beginning indices of each local chunks of E by parallel prefix sum (exclusive) on EChunkSize and store it in EChunkStartIndex
+		int cumulativeSum = 0;
+		#pragma omp simd reduction(inscan, +:cumulativeSum)
+		for (int i = 0; i < EChunkSize.size(); i++) {
+			EChunkStartIndex[i] = cumulativeSum;
+			#pragma omp scan exclusive(cumulativeSum)
+			cumulativeSum += EChunkSize[i];
+		}
+
+		int currentLocalEIndex = EChunkStartIndex[threadID];
+
+		// Now we will let each thread go ahead and construct its own part of E
+		for (int tetramerID = tetramerStart; tetramerID <= tetramerEnd; tetramerID++) {
+			// INCLUSIVE start and end index of the tetramer block in F
+			int startIndexInF = Lp[tetramerID];
+			int endIndexInF = 0;
+			if (tetramerID < tetramerEnd) {
+				endIndexInF = Lp[tetramerID + 1] - 1;
+			} else {
+				// tetramerID == tetramerEnd
+				if (tetramerID == TETRAMER_COUNT - 1) {
+					endIndexInF = F.size() - 1;
+				}
+				else {
+					endIndexInF = Lp[tetramerID + 1] - 1;
+				}
+			}
+
+			int currProteinID = F[startIndexInF].first;
+
+			// leftBoundary and rightBoundary defines the block B_l
+			// leftBoundary is inclusive, rightBoundary is exclusive
+			int leftBoundary = startIndexInF;
+			int rightBoundary = startIndexInF;
+
+			while (rightBoundary <= endIndexInF) {
+				if (F[rightBoundary].first == currProteinID) {
+					rightBoundary++;
+				}
+				else {
+					for (int i = leftBoundary; i < rightBoundary; i++) {
+						int genomeA_ID = F[i].second;
+						for (int j = i + 1; j < rightBoundary; j++) {
+							int genomeB_ID = F[j].second;
+							ETriple newElement(currProteinID, genomeA_ID, genomeB_ID);
+							E[currentLocalEIndex] = newElement;
+							currentLocalEIndex++;
+						}
+					}
+
+					currProteinID = F[rightBoundary].first;
+					leftBoundary = rightBoundary;
+				}
+			}
+
+			// Complete the last calculation for when the while loop finishes because rightBoundary > endIndexInF,
+			// but the calculation for currProteinID is not done yet
+			for (int i = leftBoundary; i < rightBoundary; i++) {
+				int genomeA_ID = F[i].second;
+				for (int j = i + 1; j < rightBoundary; j++) {
+					int genomeB_ID = F[j].second;
+					ETriple newElement(currProteinID, genomeA_ID, genomeB_ID);
+					E[currentLocalEIndex] = newElement;
+					currentLocalEIndex++;
+				}
+			}
+		}
+
+		#pragma omp barrier
+
+		#pragma omp single
+		{
+			std::cout << "Done with constructing E" << std::endl;
+		}
+	}
 
     return SUCCESS;
 }
@@ -182,7 +366,7 @@ int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 	std::vector<int> tetramerStartDistribution;
 	std::vector<int> tetramerEndDistribution;
 	int totalNumThreads = -1;
-	float slack_percentage = 0.1;
+	float slack_percentage = SLACK_PERCENTAGE;
 
 	#pragma omp parallel default(none) \
 	shared(F, db, proteinSet, Lc, Lp, tetramerStartDistribution, tetramerEndDistribution, totalNumThreads, errorCodeFound, slack_percentage, std::cerr)
@@ -287,7 +471,7 @@ int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 	{
 		totalNumThreads = omp_get_num_threads();
 		threadID = omp_get_thread_num();
-		
+
 
 		if (threadID < proteinCount % totalNumThreads) {
 			// Each will be responsible for proteinCount / totalNumThreads + 1 proteins
