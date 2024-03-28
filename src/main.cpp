@@ -5,10 +5,10 @@
 #include <numeric>
 #include <omp.h>
 #include <set>
-#include "sqlite-amalgamation-3450100/sqlite3.h"
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "sqlite3.h"
 
 #define SUCCESS 0
 #define ERROR_SQLITE_DATABASE 1
@@ -42,10 +42,9 @@ bool customSortE(const ETriple& firstElement, const ETriple& secondElement);
 void parallelMergeSort(std::vector<ETriple>& E, int left, int right, int serialThreshold);
 int genomePairToJACIndex(int genomeA, int genomeB);
 
-int main()
+int parallelfastaa(const std::string pathToDatabse)
 {
     sqlite3* database;
-    const std::string pathToDatabse = "modified_xantho_fastaai2.db";
     int errorCode = sqlite3_open(pathToDatabse.c_str(), &database);
 
     if (errorCode != SQLITE_OK) {
@@ -870,4 +869,17 @@ void parallelMergeSort(std::vector<ETriple>& E, int left, int right, int serialT
 int genomePairToJACIndex(int genomeA, int genomeB) {
 	// (37/2) * a - a^2 / 2 + b - 1
 	return (37 * genomeA - genomeA * genomeA) / 2 + genomeB - 1;
+}
+
+
+
+int main(int argc, char *argv[]){
+   if (argc < 2) {
+	   std::cout << "Missing Database location " << std::endl;
+	   std::cout << "Usage: " << argv[0] << " Database Location " << std::endl;
+	   return 1;
+   }
+    // const std::string pathToDatabse = "modified_xantho_fastaai2.db";
+    const std::string pathToDatabse = argv[1];
+    return parallelfastaa(pathToDatabse);
 }
