@@ -1,7 +1,6 @@
 /* NOTE: This solution is written for a sqlite database with UTF-8 Encoding */
 #include <algorithm>
 #include <chrono>
-#include <execution>
 #include <iostream>
 #include <numeric>
 #include <omp.h>
@@ -227,7 +226,7 @@ int main()
 
 		// Get the beginning indices of each local chunks of E by parallel prefix sum (exclusive) on EChunkSize and store it in EChunkStartIndex
 		int cumulativeSum = 0;
-		#pragma omp simd reduction(inscan, +:cumulativeSum)
+		// #pragma omp simd reduction(inscan, +:cumulativeSum)
 		for (int i = 0; i < EChunkSize.size(); i++) {
 			EChunkStartIndex[i] = cumulativeSum;
 			#pragma omp scan exclusive(cumulativeSum)
@@ -640,7 +639,7 @@ int constructLcandLp(sqlite3* db, std::vector<std::string>& proteinSet, std::vec
 
 	// Parallel prefix sum on Lc to construct Lp
 	int cumulativeSum = 0;
-	#pragma omp parallel for simd reduction(inscan,+: cumulativeSum)
+	// #pragma omp parallel for simd reduction(inscan,+: cumulativeSum)
 	for (int i = 0; i < Lc.size(); i++) {
 		Lp[i] = cumulativeSum;
 		#pragma omp scan exclusive(cumulativeSum)
