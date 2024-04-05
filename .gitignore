@@ -1,4 +1,5 @@
 ext/sqlite-amalgamation-3450100/sqlite3
 ext/sqlite-amalgamation-3450100/sqlite3.o
+data/comprehensive_proks.db
 main.exe
 build/
