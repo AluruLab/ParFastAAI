@@ -149,13 +149,13 @@ int parallelfastaai(const std::string pathToDatabase)
 
 	std::vector<double> AJI;
 
-	#pragma omp parallel default(none) \
+#pragma omp parallel default(none) \
 	shared(Lc, Lp, F, T, E, JAC, AJI, EChunkSize, EChunkStartIndex, genomePairEStartIndex, genomePairEEndIndex, tetramerStartDistribution, tetramerEndDistribution, slack_percentage, totalNumThreads, ESize, std::cout, startTime, endTime)
 	{
 		/** PHASE 2: Generate tetramer tuples **/
 
 		// Ask 1 thread to carry out the distribution of tasks, i.e. tetramer tuples for all threads
-		#pragma omp single
+#pragma omp single
 		{
 			startTime = std::chrono::high_resolution_clock::now();
 			totalNumThreads = omp_get_num_threads();
@@ -238,25 +238,25 @@ int parallelfastaai(const std::string pathToDatabase)
 
 		EChunkSize[threadID] = countElementInE;
 
-		#pragma omp barrier
+#pragma omp barrier
 
 		// Get the length of E
-		#pragma omp for reduction(+: ESize)
+#pragma omp for reduction(+: ESize)
 		for (int i = 0; i < EChunkSize.size(); i++) {
 			ESize += EChunkSize[i];
 		}
 
-		#pragma omp single
+#pragma omp single
 		{
 			E.resize(ESize);
 		}
 
 		// Get the beginning indices of each local chunks of E by parallel prefix sum (exclusive) on EChunkSize and store it in EChunkStartIndex
 		int cumulativeSum = 0;
-		#pragma omp simd reduction(inscan, +:cumulativeSum)
+#pragma omp simd reduction(inscan, +:cumulativeSum)
 		for (int i = 0; i < EChunkSize.size(); i++) {
 			EChunkStartIndex[i] = cumulativeSum;
-			#pragma omp scan exclusive(cumulativeSum)
+#pragma omp scan exclusive(cumulativeSum)
 			cumulativeSum += EChunkSize[i];
 		}
 
@@ -320,9 +320,9 @@ int parallelfastaai(const std::string pathToDatabase)
 			}
 		}
 
-		#pragma omp barrier
+#pragma omp barrier
 
-		#pragma omp single
+#pragma omp single
 		{
 			endTime = std::chrono::high_resolution_clock::now();
 			auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
@@ -354,7 +354,7 @@ int parallelfastaai(const std::string pathToDatabase)
 		// Prepare the JAC vector
 		int totalGenomePairs = GENOME_COUNT * (GENOME_COUNT - 1) / 2;
 
-		#pragma omp single
+#pragma omp single
 		{
 			JAC.resize(totalGenomePairs);
 			genomePairEStartIndex.resize(totalGenomePairs);
@@ -395,7 +395,7 @@ int parallelfastaai(const std::string pathToDatabase)
 			genomePairEndIndex = buffer + (threadID - totalGenomePairs % totalNumThreads + 1) * (totalGenomePairs / totalNumThreads) - 1;
 		}
 
-		#pragma omp barrier
+#pragma omp barrier
 
 		// We need to know where in the sorted E does each genome pair start and end
 		// Each thread can look though its local chunk of E and help fill in the 2 arrays: genomePairEStartIndex, genomePairEEndIndex
@@ -420,7 +420,7 @@ int parallelfastaai(const std::string pathToDatabase)
 			genomePairEStartIndex[genomePairIndexInJAC] = 0;
 		}
 
-		#pragma omp barrier
+#pragma omp barrier
 
 		while (currentLocalEIndex < EChunkStartIndex[threadID] + EChunkSize[threadID]) {
 			int currentGenomeA = E[currentLocalEIndex].genomeA;
@@ -467,7 +467,7 @@ int parallelfastaai(const std::string pathToDatabase)
 			}
 		}
 
-		#pragma omp barrier
+#pragma omp barrier
 
 		/*#pragma omp single
 		{
@@ -541,7 +541,7 @@ int parallelfastaai(const std::string pathToDatabase)
 
 
 		/** PHASE 4: Finalize output **/
-		#pragma omp single
+#pragma omp single
 		{
 			std::cout << "Finished JAC construction" << std::endl;
 			AJI.resize(totalGenomePairs);
@@ -628,10 +628,10 @@ int constructLcandLp(sqlite3* db, std::vector<std::string>& proteinSet, std::vec
 
 	// Parallel prefix sum on Lc to construct Lp
 	int cumulativeSum = 0;
-	#pragma omp parallel for simd reduction(inscan,+: cumulativeSum)
+#pragma omp parallel for simd reduction(inscan,+: cumulativeSum)
 	for (int i = 0; i < Lc.size(); i++) {
 		Lp[i] = cumulativeSum;
-		#pragma omp scan exclusive(cumulativeSum)
+#pragma omp scan exclusive(cumulativeSum)
 		cumulativeSum += Lc[i];
 	}
 
@@ -648,11 +648,11 @@ int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 	std::vector<std::chrono::time_point<std::chrono::high_resolution_clock>> startTimes;
 	std::vector<std::chrono::time_point<std::chrono::high_resolution_clock>> endTimes;
 
-	#pragma omp parallel default(none) \
+#pragma omp parallel default(none) \
 	shared(F, db, proteinSet, Lc, Lp, tetramerStartDistribution, tetramerEndDistribution, totalNumThreads, errorCodeFound, slack_percentage, std::cerr, std::cout, startTimes, endTimes)
 	{
 		// Ask 1 thread to carry out the distribution of tasks
-		#pragma omp single
+#pragma omp single
 		{
 			totalNumThreads = omp_get_num_threads();
 			tetramerStartDistribution.resize(totalNumThreads, -1);
@@ -749,7 +749,7 @@ int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 		auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(endTimes[threadID] - startTimes[threadID]);
 		auto minutes = duration_seconds.count() / 60;
 		auto seconds = duration_seconds.count() % 60;
-		std::cout << "ThreadID "<<threadID<<" took " << duration.count() << " milliseconds (i.e. " << minutes << " minutes " << seconds << " seconds) to construct local F" << std::endl;
+		std::cout << "ThreadID " << threadID << " took " << duration.count() << " milliseconds (i.e. " << minutes << " minutes " << seconds << " seconds) to construct local F" << std::endl;
 	}
 
 	return SUCCESS;
@@ -768,14 +768,23 @@ int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 		row.resize(GENOME_COUNT, 0);
 	}
 
-	#pragma omp parallel default(none) \
-	shared(db, proteinSet, proteinCount, T, errorCodeFound, std::cerr, std::cout) \
+	std::vector<std::chrono::time_point<std::chrono::high_resolution_clock>> startTimes;
+	std::vector<std::chrono::time_point<std::chrono::high_resolution_clock>> endTimes;
+
+#pragma omp parallel default(none) \
+	shared(db, proteinSet, proteinCount, T, errorCodeFound, std::cerr, std::cout, startTimes, endTimes) \
 	private(totalNumThreads, threadID, proteinStart, proteinEnd)
 	{
 		totalNumThreads = omp_get_num_threads();
 		threadID = omp_get_thread_num();
 
+#pragma omp single
+		{
+			startTimes.resize(totalNumThreads);
+			endTimes.resize(totalNumThreads);
+		}
 
+		auto startTime = std::chrono::high_resolution_clock::now();
 		if (threadID < proteinCount % totalNumThreads) {
 			// Each will be responsible for proteinCount / totalNumThreads + 1 proteins
 			proteinStart = threadID * (proteinCount / totalNumThreads + 1);
@@ -788,50 +797,67 @@ int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 			proteinEnd = buffer + (threadID - proteinCount % totalNumThreads + 1) * (proteinCount / totalNumThreads) - 1;
 		}
 
-
+		std::ostringstream oss;
 		for (int proteinIndex = proteinStart; proteinIndex <= proteinEnd; proteinIndex++) {
 			std::string protein = proteinSet[proteinIndex];
-
-			std::string sqlQuery = "SELECT genome, tetras from `" + protein + "_genomes`";
-
-			sqlite3_stmt* statement;
-			int errorCode = sqlite3_prepare_v2(db, sqlQuery.c_str(), -1, &statement, nullptr);
-
-			if (errorCode != SQLITE_OK) {
-				errorCodeFound = ERROR_IN_CONSTRUCTION;
-				std::cerr << "Error in preparing sql statement" << sqlQuery << std::endl;
-				std::cerr << "The error was: " << sqlite3_errmsg(db);
+			oss << "SELECT genome, length(tetras), " << proteinIndex << " as source_table from `" << protein << "_genomes` ";
+			if (proteinIndex < proteinEnd) {
+				oss << " UNION ALL ";
 			}
-
-			if (errorCodeFound == -1) {
-				while (sqlite3_step(statement) == SQLITE_ROW) {
-					const int genomeID = sqlite3_column_int(statement, 0);
-					size_t sizeOfBlobInBytes = sqlite3_column_bytes(statement, 1);
-
-					//// This code will read the tetramer values in the blob
-					//const void* tetraBlob = sqlite3_column_blob(statement, 1);
-
-					//auto* blobBytes = static_cast<const unsigned char*>(tetraBlob);
-					//std::cout << "For genome " << genomeID << " the tetras blob include: ";
-					//for (size_t i = 0; i < sizeOfBlobInBytes; i += sizeof(int)) {
-					//	// From Kenji's python code, inferred that his sqlite database is storing in little endian and integer is 4 bytes
-					//	int value = blobBytes[i] | (blobBytes[i + 1] << 8) | (blobBytes[i + 2] << 16) | (blobBytes[i + 3] << 24);
-					//	std::cout << value << " ";
-					//}
-					//std::cout << std::endl;
-
-					int countTetras = sizeOfBlobInBytes / sizeof(int);
-					T[proteinIndex][genomeID] = countTetras;
-				}
-			}
-
-			sqlite3_finalize(statement);
 		}
+		std::string sqlQuery = oss.str();
+
+		sqlite3_stmt* statement;
+		int errorCode = sqlite3_prepare_v2(db, sqlQuery.c_str(), -1, &statement, nullptr);
+
+		if (errorCode != SQLITE_OK) {
+			errorCodeFound = ERROR_IN_CONSTRUCTION;
+			std::cerr << "Error in preparing sql statement " << sqlQuery << std::endl;
+			std::cerr << "The error was: " << sqlite3_errmsg(db);
+		}
+
+		if (errorCodeFound == -1) {
+			while (sqlite3_step(statement) == SQLITE_ROW) {
+				const int genomeID = sqlite3_column_int(statement, 0);
+				int countTetras = sqlite3_column_int(statement, 1);
+				int proteinIndex = sqlite3_column_int(statement, 2);
+
+				//// This code will read the tetramer values in the blob
+				//const void* tetraBlob = sqlite3_column_blob(statement, 1);
+
+				//auto* blobBytes = static_cast<const unsigned char*>(tetraBlob);
+				//std::cout << "For genome " << genomeID << " the tetras blob include: ";
+				//for (size_t i = 0; i < sizeOfBlobInBytes; i += sizeof(int)) {
+				//	// From Kenji's python code, inferred that his sqlite database is storing in little endian and integer is 4 bytes
+				//	int value = blobBytes[i] | (blobBytes[i + 1] << 8) | (blobBytes[i + 2] << 16) | (blobBytes[i + 3] << 24);
+				//	std::cout << value << " ";
+					//}
+				//std::cout << std::endl;
+
+				T[proteinIndex][genomeID] = countTetras;
+			}
+		}
+
+		sqlite3_finalize(statement);
+		auto endTime = std::chrono::high_resolution_clock::now();
+
+		startTimes[threadID] = startTime;
+		endTimes[threadID] = endTime;
 	}
+
 
 	if (errorCodeFound != -1) {
 		return errorCodeFound;
 	}
+
+	for (int threadID = 0; threadID < startTimes.size(); threadID++) {
+		auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTimes[threadID] - startTimes[threadID]);
+		auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(endTimes[threadID] - startTimes[threadID]);
+		auto minutes = duration_seconds.count() / 60;
+		auto seconds = duration_seconds.count() % 60;
+		std::cout << "ThreadID " << threadID << " took " << duration.count() << " milliseconds (i.e. " << minutes << " minutes " << seconds << " seconds) to construct local T" << std::endl;
+	}
+
 	return SUCCESS;
 }
 
@@ -855,14 +881,14 @@ void parallelMergeSort(std::vector<ETriple>& E, int left, int right, int serialT
 		else {
 			int mid = left + (right - left) / 2;
 
-			#pragma omp task shared(E)
+#pragma omp task shared(E)
 			parallelMergeSort(E, left, mid, serialThreshold);
 
-			#pragma omp task shared(E)
+#pragma omp task shared(E)
 			parallelMergeSort(E, mid + 1, right, serialThreshold);
 
 			// We must wait for both tasks to complete before we merge the sorted halves
-			#pragma omp taskwait
+#pragma omp taskwait
 
 			std::vector<ETriple> temp;
 			std::merge(E.begin() + left, E.begin() + mid + 1, E.begin() + mid + 1, E.begin() + right + 1, std::back_inserter(temp), customSortE);
