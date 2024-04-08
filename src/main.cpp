@@ -819,7 +819,8 @@ int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 		if (errorCodeFound == -1) {
 			while (sqlite3_step(statement) == SQLITE_ROW) {
 				const int genomeID = sqlite3_column_int(statement, 0);
-				int countTetras = sqlite3_column_int(statement, 1);
+				int sizeOfBlobInBytes = sqlite3_column_int(statement, 1);
+				int countTetras = sizeOfBlobInBytes / sizeof(int);
 				int proteinIndex = sqlite3_column_int(statement, 2);
 
 				//// This code will read the tetramer values in the blob
