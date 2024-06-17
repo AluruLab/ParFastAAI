@@ -1,5 +1,9 @@
 ext/sqlite-amalgamation-3450100/sqlite3
 ext/sqlite-amalgamation-3450100/sqlite3.o
+ext/sqlite/sqlite3
+ext/sqlite/sqlite3.o
 data/comprehensive_proks.db
+src/main.o
 main.exe
 build/
+bkup.txt

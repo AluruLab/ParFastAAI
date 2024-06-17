@@ -517,7 +517,7 @@ int parallelfastaai(const std::string pathToDatabase)
 
 				if (blockBkEnd <= blockBlEnd) {
 					int BkLength = blockBkEnd - blockBkStart;
-					double J_Pi_Ga_Gb = (double)(BkLength) / (double)(T[currProteinID][currGenomeA] + T[currProteinID][currGenomeB] + BkLength);
+					double J_Pi_Ga_Gb = (double)(BkLength) / (double)(T[currProteinID][currGenomeA] + T[currProteinID][currGenomeB] - BkLength);
 					S += J_Pi_Ga_Gb;
 					N += 1;
 
@@ -528,7 +528,7 @@ int parallelfastaai(const std::string pathToDatabase)
 					// blockBkEnd > blockBlEnd
 					// Finish the last computation
 					int BkLength = blockBkEnd - blockBkStart;
-					double J_Pi_Ga_Gb = (double)(BkLength) / (double)(T[currProteinID][currGenomeA] + T[currProteinID][currGenomeB] + BkLength);
+					double J_Pi_Ga_Gb = (double)(BkLength) / (double)(T[currProteinID][currGenomeA] + T[currProteinID][currGenomeB] - BkLength);
 					S += J_Pi_Ga_Gb;
 					N += 1;
 				}
