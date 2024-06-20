@@ -17,7 +17,6 @@
 #define ERROR_SQLITE_MEMORY_ALLOCATION 2
 #define ERROR_IN_CONSTRUCTION 3
 #define TETRAMER_COUNT 160000
-#define GENOME_COUNT 20
 #define SLACK_PERCENTAGE 0.0
 
 struct ETriple {
@@ -36,10 +35,11 @@ struct JACTuple {
 	int N;
 };
 
+int queryMetadataFromDatabase(sqlite3* db, int& GENOMECOUNT, std::vector <std::string>& proteinSet);
 int constructLcandLp(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<int>& Lc, std::vector<int>& Lp);
 int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::pair<int, int>>& F,
 	std::vector<int>& Lc, std::vector<int>& Lp);
-int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::vector<int>>& T);
+int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::vector<int>>& T, const int GENOMECOUNT);
 bool customSortE(const ETriple& firstElement, const ETriple& secondElement);
 void parallelMergeSort(std::vector<ETriple>& E, int left, int right, int serialThreshold);
 int genomePairToJACIndex(int genomeA, int genomeB);
@@ -63,7 +63,20 @@ int parallelfastaai(const std::string pathToDatabase)
 
 	/** PHASE 1: Construction of the data structures **/
 
-	std::vector<std::string> proteinSet = { "pf00411.19", "pf00237.19", "pf01016.19", "pf02033.18", "pf00347.23", "pf00119.20",
+	int GENOMECOUNT = -1;
+	std::vector<std::string> proteinSet;
+
+	errorCode = queryMetadataFromDatabase(database, GENOMECOUNT, proteinSet);
+
+	if (errorCode != SUCCESS) {
+		std::cerr << "Error in querying metadata from database " << pathToDatabase << std::endl;
+		std::cerr << "ERROR CODE = " << errorCode << std::endl;
+		sqlite3_close(database);
+		return ERROR_SQLITE_DATABASE;
+	}
+
+	// This is all the protein for modified_xantho_fastaai2.db
+	/*std::vector<std::string> proteinSet = { "pf00411.19", "pf00237.19", "pf01016.19", "pf02033.18", "pf00347.23", "pf00119.20",
 				"pf00297.22", "pf02601.15", "pf00318.20", "pf02367.17", "pf00825.18", "pf02410.15",
 				"pf00406.22", "pf00380.19", "pf00213.18", "pf05221.17", "pf00252.18", "pf00177.21",
 				"pf00709.21", "pf00312.22", "pf01192.22", "pf06026.14", "pf01649.18", "pf00572.18",
@@ -76,9 +89,7 @@ int parallelfastaai(const std::string pathToDatabase)
 				"pf01264.21", "pf01193.24", "pf00410.19", "pf00584.20", "pf01245.20", "pf02130.17",
 				"pf02699.15", "pf01765.19", "pf01783.23", "pf00281.19", "pf00416.22", "pf00366.20",
 				"pf00344.20", "pf00831.23", "pf00334.19", "pf00830.19", "pf00861.22", "pf00453.18",
-				"pf00181.23", "pf03652.15" };
-
-	// std::vector<std::string> proteinSet = { "pf00347.23", "pf00121.18" }; // { "pf00121.18", "pf00411.19" };
+				"pf00181.23", "pf03652.15" };*/
 
 	std::vector<int> Lc;
 	std::vector<int> Lp;
@@ -89,6 +100,7 @@ int parallelfastaai(const std::string pathToDatabase)
 
 	if (errorCode != SUCCESS) {
 		std::cerr << "Error in constructing Lc and Lp, error code = " << errorCode << std::endl;
+		sqlite3_close(database);
 		return errorCode;
 	}
 
@@ -106,6 +118,7 @@ int parallelfastaai(const std::string pathToDatabase)
 
 	if (errorCode != SUCCESS) {
 		std::cerr << "Error in constructing F, error code = " << errorCode << std::endl;
+		sqlite3_close(database);
 		return errorCode;
 	}
 
@@ -117,11 +130,12 @@ int parallelfastaai(const std::string pathToDatabase)
 
 	std::vector<std::vector<int>> T;
 	startTime = std::chrono::high_resolution_clock::now();
-	errorCode = constructT(database, proteinSet, T);
+	errorCode = constructT(database, proteinSet, T, GENOMECOUNT);
 	endTime = std::chrono::high_resolution_clock::now();
 
 	if (errorCode != SUCCESS) {
 		std::cerr << "Error in constructing T, error code = " << errorCode << std::endl;
+		sqlite3_close(database);
 		return errorCode;
 	}
 
@@ -150,7 +164,7 @@ int parallelfastaai(const std::string pathToDatabase)
 	std::vector<double> AJI;
 
 #pragma omp parallel default(none) \
-	shared(Lc, Lp, F, T, E, JAC, AJI, EChunkSize, EChunkStartIndex, genomePairEStartIndex, genomePairEEndIndex, tetramerStartDistribution, tetramerEndDistribution, slack_percentage, totalNumThreads, ESize, std::cout, startTime, endTime)
+	shared(Lc, Lp, F, T, E, JAC, AJI, GENOMECOUNT, EChunkSize, EChunkStartIndex, genomePairEStartIndex, genomePairEEndIndex, tetramerStartDistribution, tetramerEndDistribution, slack_percentage, tota
 	{
 		/** PHASE 2: Generate tetramer tuples **/
 
@@ -352,7 +366,7 @@ int parallelfastaai(const std::string pathToDatabase)
 		/** PHASE 3: Compute the Jaccard Coefficient values **/
 
 		// Prepare the JAC vector
-		int totalGenomePairs = GENOME_COUNT * (GENOME_COUNT - 1) / 2;
+		int totalGenomePairs = GENOMECOUNT * (GENOMECOUNT - 1) / 2;
 
 #pragma omp single
 		{
@@ -369,7 +383,7 @@ int parallelfastaai(const std::string pathToDatabase)
 				JAC[i].S = 0.0;
 				JAC[i].N = 0;
 
-				if (genomeB == GENOME_COUNT - 1) {
+				if (genomeB == GENOMECOUNT - 1) {
 					genomeA += 1;
 					genomeB = genomeA + 1;
 				}
@@ -564,6 +578,54 @@ int parallelfastaai(const std::string pathToDatabase)
 	return SUCCESS;
 }
 
+int queryMetadataFromDatabase(sqlite3* db, int& GENOMECOUNT, std::vector <std::string>& proteinSet) {
+	std::string sqlQuery = "SELECT count(*) as count_genome FROM genome_metadata";
+	sqlite3_stmt* statement;
+	int errorCode = sqlite3_prepare_v2(db, sqlQuery.c_str(), -1, &statement, nullptr);
+
+	if (errorCode != SQLITE_OK) {
+		std::cerr << "Error in preparing sql statement " << sqlQuery << std::endl;
+		std::cerr << "The error was: " << sqlite3_errmsg(db);
+		return ERROR_SQLITE_DATABASE;
+	}
+
+	if (sqlite3_step(statement) == SQLITE_ROW) {
+		GENOMECOUNT = sqlite3_column_int(statement, 0);
+	}
+
+	sqlQuery = "SELECT count(*) from scp_data";
+	errorCode = sqlite3_prepare_v2(db, sqlQuery.c_str(), -1, &statement, nullptr);
+
+	if (errorCode != SQLITE_OK) {
+		std::cerr << "Error in preparing sql statement " << sqlQuery << std::endl;
+		std::cerr << "The error was: " << sqlite3_errmsg(db);
+		return ERROR_SQLITE_DATABASE;
+	}
+
+	if (sqlite3_step(statement) == SQLITE_ROW) {
+		int scpCount = sqlite3_column_int(statement, 0);
+		proteinSet.resize(scpCount);
+	}
+
+	sqlQuery = "SELECT scp_acc from scp_data";
+	errorCode = sqlite3_prepare_v2(db, sqlQuery.c_str(), -1, &statement, nullptr);
+	if (errorCode != SQLITE_OK) {
+		std::cerr << "Error in preparing sql statement " << sqlQuery << std::endl;
+		std::cerr << "The error was: " << sqlite3_errmsg(db);
+		return ERROR_SQLITE_DATABASE;
+	}
+
+	int index = 0;
+	while (sqlite3_step(statement) == SQLITE_ROW) {
+		const unsigned char* scp_acc = sqlite3_column_text(statement, 0);
+		std::string proteinName(reinterpret_cast<const char*>(scp_acc));
+		proteinSet[index] = proteinName;
+		index++;
+	}
+
+	return SUCCESS;
+}
+
 int constructLcandLp(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<int>& Lc, std::vector<int>& Lp) {
 	int totalNumThreads;
 	int threadID;
@@ -594,7 +656,7 @@ int constructLcandLp(sqlite3* db, std::vector<std::string>& proteinSet, std::vec
 		}
 
 		for (std::string protein : proteinSet) {
-			std::string sqlQuery = "SELECT tetra, genomes FROM `" + protein + "_tetras` WHERE tetra BETWEEN ? AND ?";
+			std::string sqlQuery = "SELECT tetramer, genomes FROM `" + protein + "_tetras` WHERE tetramer BETWEEN ? AND ?";
 
 			sqlite3_stmt* statement;
 			int errorCode = sqlite3_prepare_v2(db, sqlQuery.c_str(), -1, &statement, nullptr);
@@ -604,7 +666,7 @@ int constructLcandLp(sqlite3* db, std::vector<std::string>& proteinSet, std::vec
 
 			if (errorCode != SQLITE_OK) {
 				errorCodeFound = ERROR_IN_CONSTRUCTION;
-				std::cerr << "Error in preparing sql statement" << sqlQuery << std::endl;
+				std::cerr << "Error in preparing sql statement " << sqlQuery << std::endl;
 				std::cerr << "The error was: " << sqlite3_errmsg(db);
 			}
 
@@ -694,12 +756,12 @@ int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 		std::ostringstream oss;
 		for (int proteinIndex = 0; proteinIndex < proteinSet.size(); proteinIndex++) {
 			std::string protein = proteinSet[proteinIndex];
-			oss << "SELECT tetra, genomes, " << proteinIndex << " as source_table FROM `" + protein + "_tetras` WHERE tetra BETWEEN " << tetramerStart << " AND " << tetramerEnd << " ";
+			oss << "SELECT tetramer, genomes, " << proteinIndex << " as source_table FROM `" + protein + "_tetras` WHERE tetramer BETWEEN " << tetramerStart << " AND " << tetramerEnd << " ";
 			if (proteinIndex < proteinSet.size() - 1) {
 				oss << " UNION ALL ";
 			}
 		}
-		oss << " ORDER BY tetra, source_table";
+		oss << " ORDER BY tetramer, source_table";
 
 		std::string sqlQuery = oss.str();
 		sqlite3_stmt* statement;
@@ -707,7 +769,7 @@ int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 
 		if (errorCode != SQLITE_OK) {
 			errorCodeFound = ERROR_IN_CONSTRUCTION;
-			std::cerr << "Error in preparing sql statement" << sqlQuery << std::endl;
+			std::cerr << "Error in preparing sql statement " << std::endl;
 			std::cerr << "The error was: " << sqlite3_errmsg(db);
 		}
 
@@ -732,7 +794,6 @@ int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 				}
 			}
 		}
-
 		sqlite3_finalize(statement);
 
 		auto endTime = std::chrono::high_resolution_clock::now();
@@ -755,7 +816,7 @@ int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 	return SUCCESS;
 }
 
-int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::vector<int>>& T) {
+int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<std::vector<int>>& T, const int GENOMECOUNT) {
 	int totalNumThreads;
 	int proteinStart = -1;
 	int proteinEnd = -1;
@@ -765,7 +826,7 @@ int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 	int errorCodeFound = -1;
 	T.resize(proteinCount);
 	for (auto& row : T) {
-		row.resize(GENOME_COUNT, 0);
+		row.resize(GENOMECOUNT, 0);
 	}
 
 	std::vector<std::chrono::time_point<std::chrono::high_resolution_clock>> startTimes;
@@ -800,7 +861,7 @@ int constructT(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 		std::ostringstream oss;
 		for (int proteinIndex = proteinStart; proteinIndex <= proteinEnd; proteinIndex++) {
 			std::string protein = proteinSet[proteinIndex];
-			oss << "SELECT genome, length(tetras), " << proteinIndex << " as source_table from `" << protein << "_genomes` ";
+			oss << "SELECT genome_id, length(tetramers), " << proteinIndex << " as source_table from `" << protein << "_genomes` ";
 			if (proteinIndex < proteinEnd) {
 				oss << " UNION ALL ";
 			}
