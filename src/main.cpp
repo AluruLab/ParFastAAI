@@ -164,7 +164,7 @@ int parallelfastaai(const std::string pathToDatabase)
 	std::vector<double> AJI;
 
 #pragma omp parallel default(none) \
-	shared(Lc, Lp, F, T, E, JAC, AJI, GENOMECOUNT, EChunkSize, EChunkStartIndex, genomePairEStartIndex, genomePairEEndIndex, tetramerStartDistribution, tetramerEndDistribution, slack_percentage, totalNumThreads, ESize, std::cout, startTime, endTime)
+	shared(Lc, Lp, F, T, E, JAC, AJI, GENOMECOUNT, EChunkSize, EChunkStartIndex, genomePairEStartIndex, genomePairEEndIndex, tetramerStartDistribution, tetramerEndDistribution, slack_percentage, tota
 	{
 		/** PHASE 2: Generate tetramer tuples **/
 
@@ -531,7 +531,7 @@ int parallelfastaai(const std::string pathToDatabase)
 
 				if (blockBkEnd <= blockBlEnd) {
 					int BkLength = blockBkEnd - blockBkStart;
-					double J_Pi_Ga_Gb = (double)(BkLength) / (double)(T[currProteinID][currGenomeA] + T[currProteinID][currGenomeB] + BkLength);
+					double J_Pi_Ga_Gb = (double)(BkLength) / (double)(T[currProteinID][currGenomeA] + T[currProteinID][currGenomeB] - BkLength);
 					S += J_Pi_Ga_Gb;
 					N += 1;
 
@@ -542,7 +542,7 @@ int parallelfastaai(const std::string pathToDatabase)
 					// blockBkEnd > blockBlEnd
 					// Finish the last computation
 					int BkLength = blockBkEnd - blockBkStart;
-					double J_Pi_Ga_Gb = (double)(BkLength) / (double)(T[currProteinID][currGenomeA] + T[currProteinID][currGenomeB] + BkLength);
+					double J_Pi_Ga_Gb = (double)(BkLength) / (double)(T[currProteinID][currGenomeA] + T[currProteinID][currGenomeB] - BkLength);
 					S += J_Pi_Ga_Gb;
 					N += 1;
 				}

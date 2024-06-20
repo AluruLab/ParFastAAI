@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.5)
 # Project Name
 set(PROJECT_NAME_STR par_fastaai)
 set(PARFASTAAI_VERSION 1.0)
 project(${PROJECT_NAME_STR} C CXX)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(BUILD_SHARED_LIBS ON)
-set(SQLITE_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/sqlite-amalgamation-3450100")
+set(SQLITE_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/sqlite")
 # set(CMAKE_BUILD_TYPE Debug) set(CMAKE_BUILD_TYPE Release)
 
 # include directories
