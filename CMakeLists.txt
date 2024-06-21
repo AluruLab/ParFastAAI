@@ -6,6 +6,7 @@ project(${PROJECT_NAME_STR} C CXX)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(BUILD_SHARED_LIBS ON)
 set(SQLITE_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/sqlite")
+set(FMT_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/fmt")
 # set(CMAKE_BUILD_TYPE Debug) set(CMAKE_BUILD_TYPE Release)
 
 # include directories
@@ -18,6 +19,8 @@ message(STATUS "MODULE PATH   ${CMAKE_MODULE_PATH}")
 # External headers for sqlite
 add_library(sqlite INTERFACE)
 target_include_directories(sqlite INTERFACE ${SQLITE_SRC_DIR})
+add_library(fmt INTERFACE)
+target_include_directories(fmt INTERFACE ${FMT_SRC_DIR}/include)
 
 # Check if OpenMP is available
 find_package(OpenMP REQUIRED)
@@ -31,10 +34,11 @@ endif()
 set(PROJECT_EXEC ${PROJECT_NAME_STR}.x)
 
 # Executable
-add_executable(${PROJECT_EXEC} src/main.cpp ${SQLITE_SRC_DIR}/sqlite3.c)
+add_executable(${PROJECT_EXEC} src/main.cpp ${SQLITE_SRC_DIR}/sqlite3.c
+    ${FMT_SRC_DIR}/src/format.cc)
 #
 add_compile_definitions(PARFASTAAI_VERSION=${PARFASTAAI_VERSION})
 # OpenMP
 include_directories(${OpenMP_CXX_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_EXEC} PUBLIC OpenMP::OpenMP_CXX sqlite
+target_link_libraries(${PROJECT_EXEC} PUBLIC OpenMP::OpenMP_CXX sqlite fmt
                                              ${CMAKE_DL_LIBS})
