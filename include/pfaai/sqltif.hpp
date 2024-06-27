@@ -10,16 +10,18 @@
 
 struct DatabaseNames {
     const std::string TMTAB_SUFFIX = "_tetras";
-    const std::string TMTAB_COLUMN_TT = "tetra";
+    const std::string TMTAB_COLUMN_TT = "tetramer";
     const std::string TMTAB_COLUMN_GM = "genomes";
-    const std::string TMTAB_TABLE_COLUMNS[2] = {TMTAB_COLUMN_TT,
-                                                TMTAB_COLUMN_GM};
     //
     const std::string GNMTAB_SUFFIX = "_genomes";
     const std::string GNMTAB_COLUMN_GID = "genome_id";
     const std::string GNMTAB_COLUMN_TMS = "tetramers";
     //
-    const std::string MTTAB = "genome_metadata";
+    const std::string GMTTAB = "genome_metadata";
+    const std::string GMTTAB_COLUMN_GID = "genome_id";
+    const std::string GMTTAB_COLUMN_GCLS = "genome_class";
+    const std::string GMTTAB_COLUMN_GLEN = "genome_length";
+    const std::string GMTTAB_COLUMN_SCPC = "scp_count";
     //
     const std::string SCPDTAB = "scp_data";
     const std::string SCPDTAB_COLUMN_ACC = "scp_acc";
@@ -48,7 +50,8 @@ template <typename DBNameType> class SQLiteInterface {
         return db;
     }
 
-    explicit SQLiteInterface(const std::string dbPath, DBNameType dbn)
+    explicit SQLiteInterface(const std::string dbPath,
+                             DBNameType dbn = DBNameType())
         : m_pathToDb(dbPath), m_sqltDbPtr(initDB(dbPath, &m_dbErrorCode)),
           m_dbNames(dbn) {}
 
@@ -83,7 +86,7 @@ template <typename DBNameType> class SQLiteInterface {
         //                       "` WHERE tetra BETWEEN ? AND ?";
         //
         const std::string genomeTetramerQueryFmt =
-            "SELECT {}, {} FROM `{}_{}` WHERE {} BETWEEN ? AND ?";
+            "SELECT {}, {} FROM `{}{}` WHERE {} BETWEEN ? AND ?";
 
         std::string sqlQuery =
             fmt::format(genomeTetramerQueryFmt, m_dbNames.TMTAB_COLUMN_TT,
@@ -122,7 +125,7 @@ template <typename DBNameType> class SQLiteInterface {
                                  std::vector<IdPairType>& F) {
         std::ostringstream oss;
         const std::string proteinSetTetramersQueryFmt =
-            "SELECT {}, {}, {} as source_table FROM `{}_{}` WHERE {} BETWEEN "
+            "SELECT {}, {}, {} as source_table FROM `{}{}` WHERE {} BETWEEN "
             "{} and {} ";
         for (int pIndex = 0; pIndex < proteinSet.size(); pIndex++) {
             const std::string protein = proteinSet[pIndex];
@@ -130,13 +133,6 @@ template <typename DBNameType> class SQLiteInterface {
                 proteinSetTetramersQueryFmt, m_dbNames.TMTAB_COLUMN_TT,
                 m_dbNames.TMTAB_COLUMN_GM, pIndex, protein,
                 m_dbNames.TMTAB_SUFFIX, tetramerStart, tetramerEnd);
-            // oss << "SELECT " << _dbNames.TMTAB_COLUMN_TT << ","
-            //     << _dbNames.TMTAB_COLUMN_GM << ", " << pIndex
-            //     << " as source_table FROM `" + protein +
-            //     _dbNames.TMTAB_SUFFIX +
-            //            "` WHERE "
-            //     << _dbNames.TMTAB_COLUMN_TT << " BETWEEN " << tetramerStart
-            //     << " AND " << tetramerEnd << " ";
             if (pIndex < proteinSet.size() - 1) {
                 oss << " UNION ALL ";
             }
@@ -183,7 +179,7 @@ template <typename DBNameType> class SQLiteInterface {
                                      std::vector<std::vector<IdType>>& T) {
         std::ostringstream oss;
         const std::string proteinSetTetramerCtQueryFmt =
-            "SELECT {}, length({}), {} as source_table from `{}_{}` ";
+            "SELECT {}, length({}), {} as source_table from `{}{}` ";
         for (int proteinIndex = proteinStart; proteinIndex <= proteinEnd;
              proteinIndex++) {
             std::string protein = proteinSet[proteinIndex];
@@ -191,10 +187,6 @@ template <typename DBNameType> class SQLiteInterface {
                                m_dbNames.GNMTAB_COLUMN_GID,
                                m_dbNames.GNMTAB_COLUMN_TMS, proteinIndex,
                                protein, m_dbNames.GNMTAB_SUFFIX);
-            // oss << "SELECT " << _dbNames.GNMTAB_COLUMN_GID << ", length("
-            //     << _dbNames.GNMTAB_COLUMN_TMS << "), " << proteinIndex
-            //     << " as source_table from `" << protein
-            //     << _dbNames.GNMTAB_SUFFIX + "` ";
             if (proteinIndex < proteinEnd) {
                 oss << " UNION ALL ";
             }
@@ -229,8 +221,8 @@ template <typename DBNameType> class SQLiteInterface {
         const std::string countQueryFmt =
             "SELECT count(*) as count_genome FROM {}";
         // std::string sqlQuery =
-        //     "SELECT count(*) as count_genome FROM " + _dbNames.MTTAB;
-        std::string sqlQuery = fmt::format(countQueryFmt, m_dbNames.MTTAB);
+        //     "SELECT count(*) as count_genome FROM " + _dbNames.GMTTAB;
+        std::string sqlQuery = fmt::format(countQueryFmt, m_dbNames.GMTTAB);
         sqlite3_stmt* statement;
         int errorCode = sqlite3_prepare_v2(m_sqltDbPtr, sqlQuery.c_str(), -1,
                                            &statement, nullptr);
@@ -246,9 +238,11 @@ template <typename DBNameType> class SQLiteInterface {
             nGenomes = sqlite3_column_int(statement, 0);
         }
 
-        const std::string protCountQueryFmt = "SELECT count(*) FROM {}";
+        const std::string protCountQueryFmt =
+            "SELECT count(DISTINCT {}) FROM {}";
         // sqlQuery = "SELECT count(*) from " + _dbNames.SCPDTAB;
-        sqlQuery = fmt::format(protCountQueryFmt, m_dbNames.SCPDTAB);
+        sqlQuery = fmt::format(protCountQueryFmt, m_dbNames.SCPDTAB_COLUMN_ACC,
+                               m_dbNames.SCPDTAB);
         errorCode = sqlite3_prepare_v2(m_sqltDbPtr, sqlQuery.c_str(), -1,
                                        &statement, nullptr);
 
@@ -264,7 +258,7 @@ template <typename DBNameType> class SQLiteInterface {
             proteinSet.resize(scpCount);
         }
 
-        const std::string protQueryFmt = "SELECT {} FROM {}";
+        const std::string protQueryFmt = "SELECT DISTINCT {} FROM {}";
         // sqlQuery = "SELECT scp_acc from " + _dbNames.SCPDTAB;
         sqlQuery = fmt::format(protQueryFmt, m_dbNames.SCPDTAB_COLUMN_ACC,
                                m_dbNames.SCPDTAB);

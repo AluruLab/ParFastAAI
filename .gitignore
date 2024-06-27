@@ -7,3 +7,5 @@ src/main.o
 main.exe
 build/
 bkup.txt
+bkup2.txt
+ext/fmt-10.2.1.zip
