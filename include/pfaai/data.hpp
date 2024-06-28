@@ -172,7 +172,7 @@ class ParFAAIData {
                 distributeFTasks(nThreads, tetramerStart, tetramerEnd);
             }
             threadTimers[threadID].reset();
-            errorCodes[threadID] = m_sqltIf.queryProtienSetTetramers(
+            errorCodes[threadID] = m_sqltIf.queryProtienSetGPPairs(
                 m_proteinSet, tetramerStart[threadID], tetramerEnd[threadID],
                 m_Lp, m_F);
             threadTimers[threadID].elapsed();
@@ -207,7 +207,7 @@ class ParFAAIData {
             int proteinStart = BLOCK_LOW(threadID, nThreads, nProteins);
             int proteinEnd = BLOCK_HIGH(threadID, nThreads, nProteins);
 
-            errorCodes[threadID] = m_sqltIf.queryProtienSetTetramerCount(
+            errorCodes[threadID] = m_sqltIf.queryProtienTetramerCounts(
                 m_proteinSet, proteinStart, proteinEnd, m_T);
             threadTimers[threadID].elapsed();
         }

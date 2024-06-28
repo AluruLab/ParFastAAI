@@ -119,10 +119,10 @@ template <typename DBNameType> class SQLiteInterface {
     }
 
     template <typename IdType, typename IdPairType>
-    int queryProtienSetTetramers(const std::vector<std::string>& proteinSet,
-                                 IdType tetramerStart, IdType tetramerEnd,
-                                 std::vector<IdType>& Lp,
-                                 std::vector<IdPairType>& F) {
+    int queryProtienSetGPPairs(const std::vector<std::string>& proteinSet,
+                               IdType tetramerStart, IdType tetramerEnd,
+                               std::vector<IdType>& Lp,
+                               std::vector<IdPairType>& F) {
         std::ostringstream oss;
         const std::string proteinSetTetramersQueryFmt =
             "SELECT {}, {}, {} as source_table FROM `{}{}` WHERE {} BETWEEN "
@@ -132,7 +132,8 @@ template <typename DBNameType> class SQLiteInterface {
             oss << fmt::format(
                 proteinSetTetramersQueryFmt, m_dbNames.TMTAB_COLUMN_TT,
                 m_dbNames.TMTAB_COLUMN_GM, pIndex, protein,
-                m_dbNames.TMTAB_SUFFIX, tetramerStart, tetramerEnd);
+                m_dbNames.TMTAB_SUFFIX, m_dbNames.TMTAB_COLUMN_TT,
+                tetramerStart, tetramerEnd);
             if (pIndex < proteinSet.size() - 1) {
                 oss << " UNION ALL ";
             }
@@ -173,10 +174,11 @@ template <typename DBNameType> class SQLiteInterface {
         return SQLITE_OK;
     }
 
-    template <typename IdType>
-    int queryProtienSetTetramerCount(const std::vector<std::string>& proteinSet,
-                                     IdType proteinStart, IdType proteinEnd,
-                                     std::vector<std::vector<IdType>>& T) {
+    template <typename IdType,
+              typename TMatType = std::vector<std::vector<IdType>>>
+    int queryProtienTetramerCounts(const std::vector<std::string>& proteinSet,
+                                   IdType proteinStart, IdType proteinEnd,
+                                   TMatType& T) {
         std::ostringstream oss;
         const std::string proteinSetTetramerCtQueryFmt =
             "SELECT {}, length({}), {} as source_table from `{}{}` ";
