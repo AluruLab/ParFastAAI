@@ -164,7 +164,7 @@ int parallelfastaai(const std::string pathToDatabase)
 	std::vector<double> AJI;
 
 #pragma omp parallel default(none) \
-	shared(Lc, Lp, F, T, E, JAC, AJI, GENOMECOUNT, EChunkSize, EChunkStartIndex, genomePairEStartIndex, genomePairEEndIndex, tetramerStartDistribution, tetramerEndDistribution, slack_percentage, tota
+	shared(Lc, Lp, F, T, E, JAC, AJI, GENOMECOUNT, EChunkSize, EChunkStartIndex, genomePairEStartIndex, genomePairEEndIndex, tetramerStartDistribution, tetramerEndDistribution, slack_percentage, totalNumThreads, startTime, endTime, ESize, std::cout)
 	{
 		/** PHASE 2: Generate tetramer tuples **/
 
@@ -593,7 +593,7 @@ int queryMetadataFromDatabase(sqlite3* db, int& GENOMECOUNT, std::vector <std::s
 		GENOMECOUNT = sqlite3_column_int(statement, 0);
 	}
 
-	sqlQuery = "SELECT count(*) from scp_data";
+	sqlQuery = "SELECT count(DISTINCT scp_acc) from scp_data";
 	errorCode = sqlite3_prepare_v2(db, sqlQuery.c_str(), -1, &statement, nullptr);
 
 	if (errorCode != SQLITE_OK) {
@@ -607,7 +607,7 @@ int queryMetadataFromDatabase(sqlite3* db, int& GENOMECOUNT, std::vector <std::s
 		proteinSet.resize(scpCount);
 	}
 
-	sqlQuery = "SELECT scp_acc from scp_data";
+	sqlQuery = "SELECT DISTINCT scp_acc from scp_data";
 	errorCode = sqlite3_prepare_v2(db, sqlQuery.c_str(), -1, &statement, nullptr);
 	if (errorCode != SQLITE_OK) {
 		std::cerr << "Error in preparing sql statement " << sqlQuery << std::endl;
@@ -745,6 +745,7 @@ int constructF(sqlite3* db, std::vector<std::string>& proteinSet, std::vector<st
 					tetramerEndDistribution[currentThread] = tetramer;
 				}
 			}
+            std::cout << "proteinSet size : " << proteinSet.size() << std::endl;
 		}
 
 		int threadID = omp_get_thread_num();
