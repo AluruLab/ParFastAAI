@@ -122,28 +122,28 @@
     {2994, 12, 1},  {2994, 80, 10}, {2994, 68, 70}, {3000, 80, 55}             \
 }
 
-#define TESTDB_PROTEIN_SET2                                                    \
-    {                                                                          \
-        "pf00411.19", "pf00237.19", "pf01016.19", "pf02033.18", "pf00347.23",  \
-            "pf00119.20", "pf00297.22", "pf02601.15", "pf00318.20",            \
-            "pf02367.17", "pf00825.18", "pf02410.15", "pf00406.22",            \
-            "pf00380.19", "pf00213.18", "pf05221.17", "pf00252.18",            \
-            "pf00177.21", "pf00709.21", "pf00312.22", "pf01192.22",            \
-            "pf06026.14", "pf01649.18", "pf00572.18", "pf00338.22",            \
-            "pf01142.18", "pf01746.21", "pf01632.19", "pf17136.4",             \
-            "pf00164.25", "pf01808.18", "pf00750.19", "pf00889.19",            \
-            "pf01196.19", "pf01250.17", "pf00162.19", "pf01725.16",            \
-            "pf01668.18", "pf00749.21", "pf00238.19", "pf02565.15",            \
-            "pf01715.17", "pf00203.21", "pf00828.19", "pf00573.22",            \
-            "pf00121.18", "pf13393.6", "pf00276.20", "pf01139.17",             \
-            "pf00886.19", "pf00189.20", "pf01176.19", "pf00687.21",            \
-            "pf01025.19", "pf03948.14", "pf00829.21", "pf01195.19",            \
-            "pf03840.14", "pf00231.19", "pf01351.18", "pf01264.21",            \
-            "pf01193.24", "pf00410.19", "pf00584.20", "pf01245.20",            \
-            "pf02130.17", "pf02699.15", "pf01765.19", "pf01783.23",            \
-            "pf00281.19", "pf00416.22", "pf00366.20", "pf00344.20",            \
-            "pf00831.23", "pf00334.19", "pf00830.19", "pf00861.22",            \
-            "pf00453.18", "pf00181.23", "pf03652.15"                           \
-    }
+#define TESTDB_GENOME_SET                                             \
+{                                                                     \
+    "Xanthomonas_albilineans_GCA_000962915_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000962925_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000962935_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000962945_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000962995_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000963025_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000963055_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000963065_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000963075_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000963115_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000963135_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000963145_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000963155_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_000963195_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_002939705_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GCA_009931595_1.fna.gz",                 \
+    "Xanthomonas_albilineans_GPE_PC73_GCA_000087965_1.fna.gz",        \
+    "Xanthomonas_alfalfae_GCA_001855615_1.fna.gz",                    \
+    "_Pseudomonas__cissicola_GCA_002019225_1.fna.gz",                 \
+    "_Pseudomonas__cissicola_GCA_008801575_1.fna.gz"                  \
+}
 
 #endif  // !PFAAI_TESTS_HPP

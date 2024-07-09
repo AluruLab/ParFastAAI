@@ -5,83 +5,147 @@
 #ifndef PAR_FAST_AAI_H
 #define PAR_FAST_AAI_H
 #include <algorithm>
+#include <cassert>
 #include <chrono>
-#include <functional>
+#include <cstdlib>
 #include <iostream>
+#include <string>
+#include <vector>
 #include <omp.h>
 #include <sqlite3.h>
-#include <string>
-#include <utility>
-#include <vector>
 
-#include "pfaai/sqltif.hpp"
+#include "fmt/core.h"
+#include "fmt/format.h"
+#include "pfaai/interface.hpp"
 #include "pfaai/utils.hpp"
-
-enum PFAAI_ERROR_CODE {
-    PFAAI_OK = 0,
-    PFAAI_ERR_SQLITE_DB = 1,
-    PFAAI_ERR_SQLITE_MEM_ALLOC = 2,
-    PFAAI_ERR_CONSTRUCT = 3
-};
 
 using time_point_t =
     std::chrono::time_point<std::chrono::high_resolution_clock>;
 
-template <typename IdType, typename IdPairType = std::pair<IdType, IdType>>
-class ParFAAIData {
+template <typename DT1, typename DT2> struct IDPair {
+    DT1 first;
+    DT2 second;
+    explicit IDPair(DT1 a, DT2 b) : first(a), second(b) {}
+    explicit IDPair() : first(DT1(-1)), second(DT2(-1)) {}
+    IDPair(const IDPair& other) : first(other.first), second(other.second) {}
+    const IDPair& operator=(const IDPair& other) {
+        first = other.first;
+        second = other.second;
+        return *this;
+    }
+
+    inline bool operator==(const IDPair<DT1, DT2>& other) const {
+        return (first == other.first) && (second == other.second);
+    }
+
+    template <class Archive> void serialize(Archive& archive) {
+        archive(first, second);
+    }
+};
+
+template <typename DT1, typename DT2>
+std::ostream& operator<<(std::ostream& ox, IDPair<DT1, DT2> const& cx) {
+    ox << "(" << cx.first << ", " << cx.second << ")";
+    return ox;
+}
+
+template <typename DT> class IDMatrix {
+    std::size_t m_nrows, m_ncols;
+    std::vector<DT> m_data;
+
+  public:
+    explicit IDMatrix(std::size_t nrows, std::size_t ncols, DT ivx = DT(0))
+        : m_nrows(nrows), m_ncols(ncols), m_data(nrows * ncols, ivx) {}
+
+    explicit IDMatrix(std::size_t nrows, std::size_t ncols, const DT* arr)
+        : m_nrows(nrows), m_ncols(ncols), m_data(arr, arr + (nrows * ncols)) {}
+
+    inline DT& operator()(std::size_t i, std::size_t j) {
+        assert(i < m_nrows);
+        assert(j < m_ncols);
+        return m_data[i * m_ncols + j];
+    }
+
+    inline DT at(std::size_t i, std::size_t j) const {
+        assert(i < m_nrows);
+        assert(j < m_ncols);
+        return m_data[i * m_ncols + j];
+    }
+
+    void resize(std::size_t nrows, std::size_t ncols) {
+        m_nrows = nrows;
+        m_ncols = ncols;
+        m_data.resize(m_nrows * m_ncols);
+    }
+
+    inline bool operator==(const IDMatrix<DT>& other) const {
+        return (m_ncols == other.m_ncols && m_nrows == other.m_nrows &&
+                m_data == other.m_data);
+    }
+    std::vector<DT> row(std::size_t i) {
+        return std::vector(m_data.begin() + i * m_ncols,
+                           m_data.begin() + (i + 1) * m_ncols);
+    }
+    std::size_t rows() const { return m_nrows; }
+    std::size_t cols() const { return m_ncols; }
+    const std::vector<DT>& data() const { return m_data; }
+    template <class Archive> void serialize(Archive& archive) {
+        archive(m_nrows, m_ncols, m_data);
+    }
+};
+
+template <typename IT>
+std::ostream& operator<<(std::ostream& ox, IDMatrix<IT> const& cx) {
+    ox << "{" << cx.rows() << ", " << cx.cols() << ", "
+       << fmt::format("{}", fmt::join(cx.data(), ",")) << "}";
+    return ox;
+}
+
+template <typename IdType, typename PairType, typename MatrixType>
+class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
     // Inputs
-    SQLiteInterface<DatabaseNames> m_sqltIf;
-    std::vector<std::string> m_proteinSet;
-    IdType m_nGenomes;
+    DataBaseInterface<IdType, PairType, MatrixType>& m_DBIf;
+    const std::vector<std::string>& m_proteinSet;
+    const std::vector<std::string>& m_genomeSet;
+    IdType m_nProtiens, m_nGenomes;
     float m_slack;
     // Error Codes
     PFAAI_ERROR_CODE m_errorCode;
     // Data structure
     std::vector<IdType> m_Lc;
     std::vector<IdType> m_Lp;
-    std::vector<IdPairType> m_F;
-    std::vector<std::vector<IdType>> m_T;
+    std::vector<PairType> m_F;
+    MatrixType m_T;
+    bool m_flagInitL;
 
   public:
-    // constexpr static IdType _tetramerCount = 160000;
     constexpr static IdType NTETRAMERS = (20 * 20 * 20 * 20);
     constexpr static float DEFAULT_SLACK_PCT = 0.0;
 
-    explicit ParFAAIData(const std::string dbPath,
+    explicit ParFAAIData(DataBaseInterface<IdType, PairType, MatrixType>& dbif,
+                         const std::vector<std::string>& protSet,
+                         const std::vector<std::string>& gnmSet,
                          float slack = DEFAULT_SLACK_PCT)
-        : m_sqltIf(dbPath, DatabaseNames()), m_slack(slack),
-          m_errorCode(PFAAI_OK) {
-        if (m_sqltIf.isDBOpen() == PFAAI_OK) {
-            m_sqltIf.queryMetaData(m_proteinSet, m_nGenomes);
-        }
-    }
-
-    int validateDBOpen() {
-        if (m_sqltIf.isDBOpenError()) {
-            std::cerr << "Error in opening " << m_sqltIf.getDBPath()
-                      << std::endl;
-            std::cerr << "The error was: " << m_sqltIf.getDBError()
-                      << std::endl;
-            return PFAAI_ERR_SQLITE_DB;
-        }
-        if (m_sqltIf.isDBNull()) {
-            std::cerr << "SQLite is unable to allocate memory for the database "
-                      << m_sqltIf.getDBPath() << std::endl;
-            return PFAAI_ERR_SQLITE_MEM_ALLOC;
-        }
-        return PFAAI_OK;
-    }
+        : m_DBIf(dbif), m_proteinSet(protSet), m_genomeSet(gnmSet),
+          m_nProtiens(m_proteinSet.size()), m_nGenomes(m_genomeSet.size()),
+          m_slack(slack), m_errorCode(PFAAI_OK), m_Lc(NTETRAMERS, 0),
+          m_Lp(NTETRAMERS, 0), m_T(m_nProtiens, m_nGenomes),
+          m_flagInitL(false) {}
 
     inline const std::vector<IdType>& getLc() const { return m_Lc; }
     inline const std::vector<IdType>& getLp() const { return m_Lp; }
-    inline const std::vector<std::vector<IdType>>& getT() const { return m_T; }
-    inline const std::vector<IdPairType>& getF() const { return m_F; }
+    inline const MatrixType& getT() const { return m_T; }
+    inline const std::vector<PairType>& getF() const { return m_F; }
     inline float getSlackPercentage() const { return m_slack; }
     inline IdType getTetramerCount() const { return NTETRAMERS; }
     inline IdType getGenomeCount() const { return m_nGenomes; }
+    inline IdType getGPCount() const {
+        return (m_nGenomes * (m_nGenomes - 1) / 2);
+    }
 
-    ~ParFAAIData() { m_sqltIf.closeDB(); }
+    ~ParFAAIData() { m_DBIf.closeDB(); }
 
+  private:
     void printThreadTimes(const std::string& prt_prefix,
                           const std::vector<timer>& threadTimers) const {
         for (int threadID = 0; threadID < threadTimers.size(); threadID++) {
@@ -90,10 +154,20 @@ class ParFAAIData {
         }
     }
 
-  public:  // construction functions
+    inline IdType genomePairToJACIndex(IdType genomeCount, IdType genomeA,
+                                       IdType genomeB) const {
+        return (genomeCount * genomeA) + genomeB -
+               static_cast<int>((genomeA + 2) * (genomeA + 1) / 2);
+    }
+
+  public:
+    inline IdType genomePairToJACIndex(IdType genomeA, IdType genomeB) const {
+        // (37/2) * a - a^2 / 2 + b - 1
+        // return (37 * genomeA - genomeA * genomeA) / 2 + genomeB - 1;
+        return genomePairToJACIndex(m_nGenomes, genomeA, genomeB);
+    }
+
     PFAAI_ERROR_CODE constructLcandLp() {
-        m_Lc.resize(NTETRAMERS, 0);
-        m_Lp.resize(NTETRAMERS, 0);
         std::vector<int> errorCodes;
         // Lc construction
 #pragma omp parallel default(none) shared(errorCodes)
@@ -103,9 +177,11 @@ class ParFAAIData {
             int tetramerStart =
                 BLOCK_LOW(threadID, totalNumThreads, NTETRAMERS);
             int tetramerEnd = BLOCK_HIGH(threadID, totalNumThreads, NTETRAMERS);
+#pragma omp single
+            { errorCodes.resize(totalNumThreads, 0); }
 
             for (const std::string protein : m_proteinSet) {
-                int qryErrCode = m_sqltIf.queryGenomeTetramers(
+                int qryErrCode = m_DBIf.queryGenomeTetramers(
                     protein, tetramerStart, tetramerEnd, m_Lc);
                 if (qryErrCode != SQLITE_OK) {
                     errorCodes[threadID] = qryErrCode;
@@ -123,9 +199,11 @@ class ParFAAIData {
 #pragma omp scan exclusive(cumulativeSum)
             cumulativeSum += m_Lc[i];
         }
+        m_flagInitL = true;
         return PFAAI_OK;
     }
 
+  private:  // construction functions
     inline void distributeFTasks(int nThreads, std::vector<int>& tetramerStart,
                                  std::vector<int>& tetramerEnd) {
         int nTasks = m_F.size();
@@ -152,12 +230,18 @@ class ParFAAIData {
         }
     }
 
+  public:
     PFAAI_ERROR_CODE constructF() {
         std::vector<int> tetramerStart, tetramerEnd, errorCodes;
         std::vector<timer> threadTimers;
+        assert(m_Lp[NTETRAMERS - 1] > 0);
+        if(m_flagInitL == false){
+            std::cout << "Lc and Lp are not Initialized" << std::endl;
+            return PFAAI_ERR_CONSTRUCT;
+        }
         //
         m_F.resize(m_Lp[NTETRAMERS - 1] + m_Lc[NTETRAMERS - 1],
-                   IdPairType(-1, -1));
+                   PairType(-1, -1));
 #pragma omp parallel default(none)                                             \
     shared(tetramerStart, tetramerEnd, errorCodes, threadTimers)
         {
@@ -172,7 +256,7 @@ class ParFAAIData {
                 distributeFTasks(nThreads, tetramerStart, tetramerEnd);
             }
             threadTimers[threadID].reset();
-            errorCodes[threadID] = m_sqltIf.queryProtienSetGPPairs(
+            errorCodes[threadID] = m_DBIf.queryProtienSetGPPairs(
                 m_proteinSet, tetramerStart[threadID], tetramerEnd[threadID],
                 m_Lp, m_F);
             threadTimers[threadID].elapsed();
@@ -190,10 +274,10 @@ class ParFAAIData {
         int nProteins = m_proteinSet.size();
         std::vector<int> errorCodes;
         //
-        m_T.resize(nProteins);
-        for (auto& row : m_T) {
-            row.resize(m_nGenomes, 0);
-        }
+        // m_T.resize(nProteins);
+        // for (auto& row : m_T) {
+        //     row.resize(m_nGenomes, 0);
+        // }
         //
 #pragma omp parallel default(none) shared(nProteins, errorCodes, threadTimers)
         {
@@ -201,13 +285,16 @@ class ParFAAIData {
             int threadID = omp_get_thread_num();
             //
 #pragma omp single
-            { threadTimers.resize(nThreads); }
+            {
+                threadTimers.resize(nThreads);
+                errorCodes.resize(nThreads);
+            }
             //
             threadTimers[threadID].reset();
             int proteinStart = BLOCK_LOW(threadID, nThreads, nProteins);
             int proteinEnd = BLOCK_HIGH(threadID, nThreads, nProteins);
 
-            errorCodes[threadID] = m_sqltIf.queryProtienTetramerCounts(
+            errorCodes[threadID] = m_DBIf.queryProtienTetramerCounts(
                 m_proteinSet, proteinStart, proteinEnd, m_T);
             threadTimers[threadID].elapsed();
         }
@@ -216,7 +303,7 @@ class ParFAAIData {
                         [](int rc) { return rc != SQLITE_OK; }))
             return (m_errorCode = PFAAI_ERR_CONSTRUCT);
         //
-        printThreadTimes(" T construction : ", threadTimers);
+        printThreadTimes("T construction : ", threadTimers);
         return PFAAI_OK;
     }
 

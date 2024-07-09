@@ -1,6 +1,7 @@
 #ifndef SQLITE_INTERFACE_HPP
 #define SQLITE_INTERFACE_HPP
 
+#include "pfaai/interface.hpp"
 #include <fmt/format.h>
 #include <iostream>
 #include <sqlite3.h>
@@ -18,8 +19,9 @@ struct DatabaseNames {
     const std::string GNMTAB_COLUMN_TMS = "tetramers";
     //
     const std::string GMTTAB = "genome_metadata";
+    const std::string GMTTAB_COLUMN_GNAME = "genome_name";
     const std::string GMTTAB_COLUMN_GID = "genome_id";
-    const std::string GMTTAB_COLUMN_GCLS = "genome_class";
+    const std::string GMTTAB_COLUMN_GCLASS = "genome_class";
     const std::string GMTTAB_COLUMN_GLEN = "genome_length";
     const std::string GMTTAB_COLUMN_SCPC = "scp_count";
     //
@@ -27,21 +29,70 @@ struct DatabaseNames {
     const std::string SCPDTAB_COLUMN_ACC = "scp_acc";
 };
 
-template <typename DBNameType> class SQLiteInterface {
+template <typename IdType, typename IdPairType, typename IdMatType,
+          typename DBNameType>
+class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> {
     std::string m_pathToDb;
     sqlite3* m_sqltDbPtr;
     int m_dbErrorCode;
     DBNameType m_dbNames;
 
   public:
-    inline bool isDBOpenError() const { return m_dbErrorCode != SQLITE_OK; }
+    explicit SQLiteInterface(const std::string dbPath,
+                             DBNameType dbn = DBNameType())
+        : m_pathToDb(dbPath), m_sqltDbPtr(initDB(dbPath, &m_dbErrorCode)),
+          m_dbNames(dbn) {}
 
-    inline bool isDBNull() const { return m_sqltDbPtr == nullptr; }
+    // inline bool isDBOpenError() const { return m_dbErrorCode != SQLITE_OK; }
 
-    const char* getDBError() const {
-        if (m_dbErrorCode == SQLITE_OK)
-            return "NO ERROR AVAILABLE";
+    // inline bool isDBNull() const { return m_sqltDbPtr == nullptr; }
+
+    virtual inline bool isDBOpen() const {
+        return m_dbErrorCode == SQLITE_OK && m_sqltDbPtr != nullptr;
+    }
+
+    virtual inline std::string getDBPath() const { return m_pathToDb; }
+
+    virtual inline const char* getDBError() const {
+        if (m_dbErrorCode == SQLITE_OK) {
+            if (m_sqltDbPtr == NULL) {
+                return "SQLite is unable to allocate memory for the database ";
+            }
+            return "NO Error Message Available";
+        }
         return sqlite3_errstr(m_dbErrorCode);
+    }
+
+    virtual inline int closeDB() {
+        int errorCode = sqlite3_close(m_sqltDbPtr);
+        m_sqltDbPtr = nullptr;
+        m_dbErrorCode = SQLITE_OK;
+        return errorCode;
+    }
+
+    virtual int getDBErrorCode() const { return m_dbErrorCode; }
+
+    PFAAI_ERROR_CODE validate() const {
+        if (!isDBOpen()) {
+            std::cerr << "Error in opening " << getDBPath()
+                      << std::endl;
+            std::cerr << "DB ERROR: " << getDBError()
+                      << std::endl;
+
+            if(getDBError())
+                return PFAAI_ERR_SQLITE_MEM_ALLOC;
+            else
+                return PFAAI_ERR_SQLITE_DB;
+        }
+        return PFAAI_OK;
+    }
+
+
+
+    virtual ~SQLiteInterface() {
+        if (m_dbErrorCode == SQLITE_OK && m_sqltDbPtr != nullptr) {
+            closeDB();
+        }
     }
 
     static sqlite3* initDB(const std::string dbPath, int* errorCode) {
@@ -50,31 +101,6 @@ template <typename DBNameType> class SQLiteInterface {
         return db;
     }
 
-    explicit SQLiteInterface(const std::string dbPath,
-                             DBNameType dbn = DBNameType())
-        : m_pathToDb(dbPath), m_sqltDbPtr(initDB(dbPath, &m_dbErrorCode)),
-          m_dbNames(dbn) {}
-
-    inline bool isDBOpen() const {
-        return m_dbErrorCode == SQLITE_OK && m_sqltDbPtr != nullptr;
-    }
-
-    std::string getDBPath() const { return m_pathToDb; }
-
-    inline int closeDB() {
-        int errorCode = sqlite3_close(m_sqltDbPtr);
-        m_sqltDbPtr = nullptr;
-        m_dbErrorCode = SQLITE_OK;
-        return errorCode;
-    }
-
-    ~SQLiteInterface() {
-        if (m_dbErrorCode == SQLITE_OK && m_sqltDbPtr != nullptr) {
-            closeDB();
-        }
-    }
-
-    template <typename IdType>
     int queryGenomeTetramers(const std::string protein, IdType tetramerStart,
                              IdType tetramerEnd, std::vector<IdType>& Lc) {
         // std::string sqlQuery = "SELECT tetra, genomes FROM `" + protein +
@@ -118,7 +144,6 @@ template <typename DBNameType> class SQLiteInterface {
         return errorCode;
     }
 
-    template <typename IdType, typename IdPairType>
     int queryProtienSetGPPairs(const std::vector<std::string>& proteinSet,
                                IdType tetramerStart, IdType tetramerEnd,
                                std::vector<IdType>& Lp,
@@ -174,11 +199,9 @@ template <typename DBNameType> class SQLiteInterface {
         return SQLITE_OK;
     }
 
-    template <typename IdType,
-              typename TMatType = std::vector<std::vector<IdType>>>
     int queryProtienTetramerCounts(const std::vector<std::string>& proteinSet,
                                    IdType proteinStart, IdType proteinEnd,
-                                   TMatType& T) {
+                                   IdMatType& T) {
         std::ostringstream oss;
         const std::string proteinSetTetramerCtQueryFmt =
             "SELECT {}, length({}), {} as source_table from `{}{}` ";
@@ -210,7 +233,7 @@ template <typename DBNameType> class SQLiteInterface {
                 int sizeOfBlobInBytes = sqlite3_column_int(statement, 1);
                 int countTetras = sizeOfBlobInBytes / sizeof(int);
                 int proteinIndex = sqlite3_column_int(statement, 2);
-                T[proteinIndex][genomeID] = countTetras;
+                T(proteinIndex, genomeID) = countTetras;
             }
         }
 
@@ -218,7 +241,8 @@ template <typename DBNameType> class SQLiteInterface {
         return SQLITE_OK;
     }
 
-    int queryMetaData(std::vector<std::string>& proteinSet, int& nGenomes) {
+    int queryMetaData(std::vector<std::string>& proteinSet,
+                      std::vector<std::string>& genomeSet) {
 
         const std::string countQueryFmt =
             "SELECT count(*) as count_genome FROM {}";
@@ -237,7 +261,29 @@ template <typename DBNameType> class SQLiteInterface {
         }
 
         if (sqlite3_step(statement) == SQLITE_ROW) {
-            nGenomes = sqlite3_column_int(statement, 0);
+            int nGenomes = sqlite3_column_int(statement, 0);
+            genomeSet.resize(nGenomes);
+        }
+
+        const std::string genomeQueryFmt = "SELECT {} FROM {}";
+        sqlQuery = fmt::format(genomeQueryFmt, m_dbNames.GMTTAB_COLUMN_GNAME,
+                               m_dbNames.GMTTAB);
+        errorCode = sqlite3_prepare_v2(m_sqltDbPtr, sqlQuery.c_str(), -1,
+                                       &statement, nullptr);
+        if (errorCode != SQLITE_OK) {
+            std::cerr << "Error in preparing sql statement " << sqlQuery
+                      << std::endl;
+            std::cerr << "The error was: " << sqlite3_errmsg(m_sqltDbPtr);
+            return errorCode;
+        }
+
+        int index = 0;
+        while (sqlite3_step(statement) == SQLITE_ROW) {
+            const unsigned char* genome_name =
+                sqlite3_column_text(statement, 0);
+            std::string genomeName(reinterpret_cast<const char*>(genome_name));
+            genomeSet[index] = genomeName;
+            index++;
         }
 
         const std::string protCountQueryFmt =
@@ -273,7 +319,7 @@ template <typename DBNameType> class SQLiteInterface {
             return errorCode;
         }
 
-        int index = 0;
+        index = 0;
         while (sqlite3_step(statement) == SQLITE_ROW) {
             const unsigned char* scp_acc = sqlite3_column_text(statement, 0);
             std::string proteinName(reinterpret_cast<const char*>(scp_acc));

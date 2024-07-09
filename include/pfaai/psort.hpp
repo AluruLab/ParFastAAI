@@ -5,27 +5,11 @@
 #include <vector>
 
 template <typename DataType>
-inline bool customSortE(const DataType& firstElement,
-                        const DataType& secondElement) {
-    // if (firstElement.genomeA != secondElement.genomeA) {
-    //	return firstElement.genomeA < secondElement.genomeA;
-    // }
-
-    // if (firstElement.genomeB != secondElement.genomeB) {
-    //	return firstElement.genomeB < secondElement.genomeB;
-    // }
-
-    // return firstElement.proteinIndex < secondElement.proteinIndex;
-    return firstElement < secondElement;
-}
-
-template <typename DataType>
 void parallelMergeSort(std::vector<DataType>& E, int left, int right,
                        int serialThreshold) {
     if (left < right) {
         if (right - left < serialThreshold) {
-            std::sort(E.begin() + left, E.begin() + right + 1,
-                      customSortE<DataType>);
+            std::sort(E.begin() + left, E.begin() + right + 1);
         } else {
             int mid = left + (right - left) / 2;
 
@@ -42,7 +26,7 @@ void parallelMergeSort(std::vector<DataType>& E, int left, int right,
             std::vector<DataType> temp;
             std::merge(E.begin() + left, E.begin() + mid + 1,
                        E.begin() + mid + 1, E.begin() + right + 1,
-                       std::back_inserter(temp), customSortE<DataType>);
+                       std::back_inserter(temp));
             std::copy(temp.begin(), temp.end(), E.begin() + left);
         }
     }

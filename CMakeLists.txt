@@ -14,7 +14,9 @@ option(BUILD_TESTING "Build tests" ON) # build tests
 set(SQLITE_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/sqlite")
 set(FMT_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/fmt")
 set(CATCH2_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/Catch2")
-# set(CMAKE_BUILD_TYPE Debug) set(CMAKE_BUILD_TYPE Release)
+set(CEREAL_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/cereal")
+# set(CMAKE_BUILD_TYPE Debug)
+# set(CMAKE_BUILD_TYPE Release)
 
 # include directories
 include_directories("${PROJECT_SOURCE_DIR}/include/")
@@ -28,6 +30,8 @@ add_library(sqlite INTERFACE)
 target_include_directories(sqlite INTERFACE ${SQLITE_SRC_DIR})
 add_library(fmt INTERFACE)
 target_include_directories(fmt INTERFACE ${FMT_SRC_DIR}/include)
+add_library(cereal INTERFACE)
+target_include_directories(cereal INTERFACE ${CEREAL_SRC_DIR}/include)
 
 # Check if OpenMP is available
 find_package(OpenMP REQUIRED)
@@ -49,7 +53,7 @@ add_compile_definitions(PARFASTAAI_VERSION=${PARFASTAAI_VERSION})
 # OpenMP
 include_directories(${OpenMP_CXX_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_EXEC} PUBLIC OpenMP::OpenMP_CXX sqlite fmt
-                                             ${CMAKE_DL_LIBS})
+                      cereal ${CMAKE_DL_LIBS})
 
 
 if(${BUILD_TESTING})
@@ -60,6 +64,6 @@ if(${BUILD_TESTING})
     target_include_directories(${PROJECT_TEST_EXEC} PUBLIC 
                               ${OpenMP_CXX_INCLUDE_DIRS})
     target_link_libraries(${PROJECT_TEST_EXEC} PRIVATE OpenMP::OpenMP_CXX sqlite
-                                                       fmt Catch2::Catch2WithMain)
+                                                       fmt cereal Catch2::Catch2WithMain)
     file(COPY data DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 endif(${BUILD_TESTING})

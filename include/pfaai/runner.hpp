@@ -1,11 +1,13 @@
 #ifndef PFAAI_RUNNER_HPP
 #define PFAAI_RUNNER_HPP
 
+#include <cstdlib>
+#include <cmath>
 #include <omp.h>
-#include <utility>
 #include <vector>
+#include <fmt/format.h>
 
-#include "pfaai/data.hpp"
+#include "pfaai/interface.hpp"
 #include "pfaai/psort.hpp"
 #include "pfaai/utils.hpp"
 
@@ -24,29 +26,69 @@ template <typename IdType = int> struct ETriple {
         if (genomeA != other.genomeA) {
             return genomeA < other.genomeA;
         }
-        if (genomeB != genomeB) {
-            return genomeB < genomeB;
+        if (genomeB != other.genomeB) {
+            return genomeB < other.genomeB;
         }
-        return proteinIndex < proteinIndex;
+        return proteinIndex < other.proteinIndex;
+    }
+
+    inline bool operator==(const ETriple<IdType>& other) const {
+        return (genomeA == other.genomeA) && (genomeB == other.genomeB) &&
+               (proteinIndex == other.proteinIndex);
+    }
+
+    template <class Archive> void serialize(Archive& archive) {
+        archive(proteinIndex, genomeA, genomeB);
     }
 };
+
+template <typename IT>
+std::ostream& operator<<(std::ostream& ox, ETriple<IT> const& cx) {
+    ox << "(" << cx.proteinIndex << ", " << cx.genomeA << ", " << cx.genomeB
+       << ")";
+    return ox;
+}
 
 template <typename IdType = int, typename SType = double> struct JACTuple {
     IdType genomeA;
     IdType genomeB;
     SType S;
     IdType N;
+
+    inline bool operator==(const JACTuple<IdType, SType>& other) const {
+        return (genomeA == other.genomeA) && (genomeB == other.genomeB) &&
+               (N == other.N) && (std::abs(S - other.S) < 1e-7);
+    }
+    
+    template <class Archive> void serialize(Archive& archive) {
+        archive(genomeA, genomeB, S, N);
+    }
 };
 
-template <typename IdType, typename IdPairType = std::pair<IdType, IdType>,
+template <typename IdType = int, typename SType = double>
+std::string format_as(const JACTuple<IdType, SType>& ijx) {
+    return fmt::format("({:>3d}, {:>3d}, {:>03.2f}, {:>3d})", ijx.genomeA, ijx.genomeB,
+                       ijx.S, ijx.N);
+}
+
+template <typename IT, typename ST>
+std::ostream& operator<<(std::ostream& ox, JACTuple<IT, ST> const& cx) {
+    ox << "(" << cx.genomeA << ", " << cx.genomeB << ", " << cx.S << ", " <<
+       cx.N << ")";
+    return ox;
+}
+
+
+
+template <typename IdType, typename IdPairType, typename IdMatrixType,
           typename SType = double>
 class ParFAAIRunner {
     // Data references
-    const ParFAAIData<IdType, IdPairType>& c_faaiDataRef;
+    const DataStructInterface<IdType, IdPairType, IdMatrixType>& c_faaiDataRef;
     const std::vector<int>& c_Lc;
     const std::vector<int>& c_Lp;
     const std::vector<IdPairType>& c_F;
-    const std::vector<std::vector<IdType>>& c_T;
+    const IdMatrixType& c_T;
     float m_slack;
     IdType m_nTetramers;
     IdType m_nGenomes;
@@ -54,43 +96,42 @@ class ParFAAIRunner {
     int m_nGenomePairs;
 
     // tetramer tuples : Array E construction : Phase 2
-    std::vector<IdType> m_tetramerStart, m_tetramerEnd;
+    std::vector<IdType> m_tetramerStart, m_tetramerEnd;  // size nThreads
     std::vector<ETriple<IdType>> m_E;
-    std::vector<IdType> m_EStartIndex;
-    std::vector<IdType> m_ESize;
+    // thread distributions of E array ~(|E|/p)
+    std::vector<IdType> m_threadEStarts, m_threadESize;  // size nThreads
 
-    // Thread starts and end indices for Phase 3
-    std::vector<IdType> m_genomePairEStartIndex;
-    std::vector<IdType> m_genomePairEEndIndex;
-    std::vector<IdType> m_genomePairStartIndex;
-    std::vector<IdType> m_genomePairEndIndex;
+    // Starts and end indices for Phase 3
+    // Thread distributions for genome pair ~(m_nGenomePairs/p)
+    std::vector<IdType> m_threadGPStarts, m_threadGPEnds;  // of size nThreads
+    // Start and end corresponding to genome pairs
+    std::vector<IdType> m_genomePairEStartIndex,
+        m_genomePairEEndIndex;  // of size m_nGenomePairs
 
     // Jaccard Step
-    std::vector<JACTuple<IdType, SType>> m_JAC;
+    std::vector<JACTuple<IdType, SType>> m_JAC;  // of size m_nGenomePairs
 
     // AJI step
-    std::vector<SType> m_AJI;
-
-    int genomePairToJACIndex(int genomeCount, int genomeA, int genomeB) {
-        return (genomeCount * genomeA) + genomeB -
-               static_cast<int>((genomeA + 2) * (genomeA + 1) / 2);
-    }
-
-    int genomePairToJACIndex(int genomeA, int genomeB) {
-        // (37/2) * a - a^2 / 2 + b - 1
-        // return (37 * genomeA - genomeA * genomeA) / 2 + genomeB - 1;
-        return genomePairToJACIndex(m_nGenomes, genomeA, genomeB);
-    }
+    std::vector<SType> m_AJI;  // of size m_nGenomePairs
 
   public:
-    explicit ParFAAIRunner(const ParFAAIData<IdType, IdPairType>& fDataRef)
+    explicit ParFAAIRunner(
+        const DataStructInterface<IdType, IdPairType, IdMatrixType>& fDataRef)
         : c_faaiDataRef(fDataRef), c_Lc(c_faaiDataRef.getLc()),
           c_Lp(c_faaiDataRef.getLp()), c_F(c_faaiDataRef.getF()),
           c_T(c_faaiDataRef.getT()),
           m_slack(c_faaiDataRef.getSlackPercentage()),
           m_nTetramers(c_faaiDataRef.getTetramerCount()),
           m_nGenomes(c_faaiDataRef.getGenomeCount()),
-          m_nGenomePairs(m_nGenomes * (m_nGenomes - 1) / 2) {}
+          m_nGenomePairs(c_faaiDataRef.getGPCount()) {}
+
+    const std::vector<ETriple<IdType>>& getE() const { return m_E; }
+    const std::vector<JACTuple<IdType>>& getJAC() const { return m_JAC; }
+    const std::vector<SType>& getAJI() const { return m_AJI; }
+
+    inline IdType genomePairToJACIndex(IdType genomeA, IdType genomeB) const {
+        return c_faaiDataRef.genomePairToJACIndex(genomeA, genomeB);
+    }
 
   private:
     void distributeTetramers(const int& nThreads) {
@@ -100,16 +141,16 @@ class ParFAAIRunner {
         m_tetramerEnd.resize(nThreads, -1);
         //
         float nTasks = static_cast<float>(c_F.size());
-        std::vector<int> taskSumPerThread(nThreads, 0);
-        int tasksPerProcessor =
+        std::vector<int> threadTaskSum(nThreads, 0);
+        int nTasksPerThread =
             static_cast<int>((nTasks / nThreads) * (1 + m_slack));
 
         int tid = 0;
         for (IdType tetramer = 0; tetramer < IdType(c_Lc.size()); tetramer++) {
             IdType nTetraTasks = c_Lc[tetramer];
-            if (taskSumPerThread[tid] + nTetraTasks <= tasksPerProcessor ||
+            if (threadTaskSum[tid] + nTetraTasks <= nTasksPerThread ||
                 tid == nThreads - 1) {
-                taskSumPerThread[tid] += nTetraTasks;
+                threadTaskSum[tid] += nTetraTasks;
                 if (m_tetramerStart[tid] == -1) {
                     m_tetramerStart[tid] = tetramer;
                 }
@@ -117,11 +158,13 @@ class ParFAAIRunner {
             } else {
                 // Move to the next processor and assign the task there
                 tid++;
-                taskSumPerThread[tid] += nTetraTasks;
+                threadTaskSum[tid] += nTetraTasks;
                 m_tetramerStart[tid] = tetramer;
                 m_tetramerEnd[tid] = tetramer;
             }
         }
+        m_threadESize.resize(nThreads);
+        m_threadEStarts.resize(nThreads);
     }
 
     IdType countTetramerTuples(const IdType& tStart, const IdType& tEnd) {
@@ -170,7 +213,7 @@ class ParFAAIRunner {
 
     void constructTetramerTuples(const int& threadID, const IdType& tStart,
                                  const IdType& tEnd) {
-        IdType currentLocalEIndex = m_EStartIndex[threadID];
+        IdType currentLocalEIndex = m_threadEStarts[threadID];
         for (IdType tetramerID = tStart; tetramerID <= tEnd; tetramerID++) {
             // INCLUSIVE start and end index of the tetramer block in F
             IdType startIndexInF = c_Lp[tetramerID];
@@ -228,7 +271,8 @@ class ParFAAIRunner {
         }
     }
 
-    int generateTetramerTuples() {
+  public:
+    PFAAI_ERROR_CODE generateTetramerTuples() {
         IdType totalESize(0);
         timer run_timer;
         // PHASE 2: Generate tetramer tuples
@@ -237,21 +281,17 @@ class ParFAAIRunner {
             int nThreads = omp_get_num_threads();
             int threadID = omp_get_thread_num();
 #pragma omp single
-            {
-                distributeTetramers(nThreads);
-                m_ESize.resize(nThreads);
-                m_EStartIndex.resize(nThreads);
-            }
+            { distributeTetramers(nThreads); }
             // Tetramers specific to this thread
-            int tStart = m_tetramerStart[threadID], tEnd = m_tetramerEnd[threadID];
+            int tStart = m_tetramerStart[threadID],
+                tEnd = m_tetramerEnd[threadID];
             // Size of tetramer tuples corresponding to this thread
-            m_ESize[threadID] = countTetramerTuples(tStart, tEnd);
-
+            m_threadESize[threadID] = countTetramerTuples(tStart, tEnd);
 #pragma omp barrier
             // Get total length of E
 #pragma omp for reduction(+ : totalESize)
-            for (int i = 0; i < m_ESize.size(); i++) {
-                totalESize += m_ESize[i];
+            for (int i = 0; i < m_threadESize.size(); i++) {
+                totalESize += m_threadESize[i];
             }
 
 #pragma omp single
@@ -260,24 +300,29 @@ class ParFAAIRunner {
             // prefix sum (exclusive) on _ESize and store it in _EStartIndex
             int cumulativeSum = 0;
 #pragma omp simd reduction(inscan, + : cumulativeSum)
-            for (int i = 0; i < m_ESize.size(); i++) {
-                m_EStartIndex[i] = cumulativeSum;
+            for (int i = 0; i < m_threadESize.size(); i++) {
+                m_threadEStarts[i] = cumulativeSum;
 #pragma omp scan exclusive(cumulativeSum)
-                cumulativeSum += m_ESize[i];
+                cumulativeSum += m_threadESize[i];
             }
             // Each thread construct its own part of E
             constructTetramerTuples(threadID, tStart, tEnd);
 #pragma omp barrier
         }
+        run_timer.elapsed();
         run_timer.print_elapsed("Time taken to construct E: ", std::cout);
-        // Parallel Sort E
-        run_timer.reset();
-#pragma omp parallel default(none) shared(m_E)
+        timer srt_timer;
+        // Parallel Sort E TODO(): Sorting speed is inconsistent, why ?
+#pragma omp single
         { parallelMergeSort(m_E, 0, m_E.size() - 1, 5); }
-        run_timer.print_elapsed("Time taken to sort E: ", std::cout);
+        // std::sort(m_E.begin(), m_E.end());
+        //
+        srt_timer.elapsed();
+        srt_timer.print_elapsed("Time taken to sort E: ", std::cout);
         return PFAAI_OK;
     }
 
+  private:
     void prepJAC(const int& nThreads) {
         m_JAC.resize(m_nGenomePairs);
         m_genomePairEStartIndex.resize(m_nGenomePairs);
@@ -295,26 +340,27 @@ class ParFAAIRunner {
                 gB += 1;
             }
         }
-        m_genomePairStartIndex.resize(nThreads);
-        m_genomePairEndIndex.resize(nThreads);
+        m_threadGPStarts.resize(nThreads);
+        m_threadGPEnds.resize(nThreads);
         std::cout << "Prepped JAC" << std::endl;
     }
 
-    void distributeGP(const int& threadID, const int& nThreads) {
+  protected:
+    void distributeGenomePairs(const int& threadID, const int& nThreads) {
         if (threadID < m_nGenomePairs % nThreads) {
             // Each will be responsible for totalGenomePairs /
             // totalNumThreads + 1 pairs
-            m_genomePairStartIndex[threadID] =
+            m_threadGPStarts[threadID] =
                 threadID * (m_nGenomePairs / nThreads + 1);
-            m_genomePairEndIndex[threadID] =
+            m_threadGPEnds[threadID] =
                 (threadID + 1) * (m_nGenomePairs / nThreads + 1) - 1;
         } else {
             int buffer =
                 (m_nGenomePairs % nThreads) * (m_nGenomePairs / nThreads + 1);
-            m_genomePairStartIndex[threadID] =
+            m_threadGPStarts[threadID] =
                 buffer + (threadID - m_nGenomePairs % nThreads) *
                              (m_nGenomePairs / nThreads);
-            m_genomePairEndIndex[threadID] =
+            m_threadGPEnds[threadID] =
                 buffer +
                 (threadID - m_nGenomePairs % nThreads + 1) *
                     (m_nGenomePairs / nThreads) -
@@ -322,7 +368,7 @@ class ParFAAIRunner {
         }
     }
 
-    void findEBlockStarts(const int& currentLocalEIndex) {
+    void findEBlockExtents(const int& threadID, IdType& currentLocalEIndex) {
         // We need to know where in the sorted E does each genome pair start
         // and end Each thread can look though its local chunk of E and help
         // fill in the 2 arrays: genomePairEStartIndex, genomePairEEndIndex
@@ -337,7 +383,7 @@ class ParFAAIRunner {
                 // Then this means we hold the beginning of this genome pair
                 // Safely write this information into the
                 // genomePairEStartIndex array
-                int genomePairIndexInJAC = genomePairToJACIndex(
+                IdType genomePairIndexInJAC = genomePairToJACIndex(
                     firstElement.genomeA, firstElement.genomeB);
                 m_genomePairEStartIndex[genomePairIndexInJAC] =
                     currentLocalEIndex;
@@ -348,31 +394,29 @@ class ParFAAIRunner {
             // Safely write the beginning of the current genome pair index
             // into genomePairEStartIndex array
             ETriple firstElement = m_E[currentLocalEIndex];
-            int genomePairIndexInJAC = genomePairToJACIndex(
+            IdType genomePairIndexInJAC = genomePairToJACIndex(
                 firstElement.genomeA, firstElement.genomeB);
             m_genomePairEStartIndex[genomePairIndexInJAC] = 0;
         }
-    }
 
-    void findEBlockEnds(const int& threadID, int& currentLocalEIndex) {
         while (currentLocalEIndex <
-               m_EStartIndex[threadID] + m_ESize[threadID]) {
-            int currentGenomeA = m_E[currentLocalEIndex].genomeA;
-            int currentGenomeB = m_E[currentLocalEIndex].genomeB;
+               m_threadEStarts[threadID] + m_threadESize[threadID]) {
+            IdType currentGenomeA = m_E[currentLocalEIndex].genomeA;
+            IdType currentGenomeB = m_E[currentLocalEIndex].genomeB;
 
             while (currentLocalEIndex <
-                       m_EStartIndex[threadID] + m_ESize[threadID] &&
+                       m_threadEStarts[threadID] + m_threadESize[threadID] &&
                    m_E[currentLocalEIndex].genomeA == currentGenomeA &&
                    m_E[currentLocalEIndex].genomeB == currentGenomeB) {
                 currentLocalEIndex++;
             }
 
             if (currentLocalEIndex <
-                m_EStartIndex[threadID] + m_ESize[threadID]) {
+                m_threadEStarts[threadID] + m_threadESize[threadID]) {
                 // Found the end index of the current genome pair
                 // Safely write this information into the
                 // genomePairEEndIndex array
-                int genomePairIndexInJAC =
+                IdType genomePairIndexInJAC =
                     genomePairToJACIndex(currentGenomeA, currentGenomeB);
                 m_genomePairEEndIndex[genomePairIndexInJAC] =
                     currentLocalEIndex - 1;
@@ -403,7 +447,7 @@ class ParFAAIRunner {
                         // We have seen the end of the current genome pair
                         // Safely write this information into
                         // genomePairEEndIndex array
-                        int genomePairIndexInJAC = genomePairToJACIndex(
+                        IdType genomePairIndexInJAC = genomePairToJACIndex(
                             currentGenomeA, currentGenomeB);
                         m_genomePairEEndIndex[genomePairIndexInJAC] =
                             currentLocalEIndex - 1;
@@ -411,7 +455,7 @@ class ParFAAIRunner {
                        // next processor
                 } else {
                     // currentLocalEIndex == E.size()
-                    int genomePairIndexInJAC =
+                    IdType genomePairIndexInJAC =
                         genomePairToJACIndex(currentGenomeA, currentGenomeB);
                     m_genomePairEEndIndex[genomePairIndexInJAC] =
                         m_E.size() - 1;
@@ -420,37 +464,24 @@ class ParFAAIRunner {
         }
     }
 
-    void dbg_print() {
-        std::cout << "Finished processing start and end index of pairs of "
-                     "genomes in E "
-                  << std::endl;
-        std::cout << " First, E(Ga, Gb, ProteinID) is : ";
+    void print_e() {
+        std::cout << "E array : " << std::endl;
         for (int i = 0; i < m_E.size(); i++) {
-            std::cout << "(" << m_E[i].genomeA << ", " << m_E[i].genomeB << ", "
-                      << m_E[i].proteinIndex << ")   ";
+            fmt::print("{}", m_E[i]);
         }
         std::cout << std::endl << std::endl;
 
-        std::cout << "Each pair of genome STARTS at:" << std::endl;
+        std::cout << "Genome Pair Extents:" << std::endl;
         for (int i = 0; i < m_genomePairEStartIndex.size(); i++) {
-            std::cout << "Genome (" << m_JAC[i].genomeA << ", "
-                      << m_JAC[i].genomeB << "): " << m_genomePairEStartIndex[i]
-                      << std::endl;
-        }
-        std::cout << std::endl << std::endl;
-
-        std::cout << "Each pair of genome ENDS at:" << std::endl;
-        for (int i = 0; i < m_genomePairEEndIndex.size(); i++) {
-            std::cout << "Genome (" << m_JAC[i].genomeA << ", "
-                      << m_JAC[i].genomeB << "): " << m_genomePairEEndIndex[i]
-                      << std::endl;
+            fmt::print("GP {} : [{}, {}]", m_E[i], m_genomePairEStartIndex[i],
+                       m_genomePairEEndIndex[i]);
         }
         std::cout << std::endl << std::endl;
     }
 
     void computeEBlockJAC(const int& threadID) {
-        for (int genomePair = m_genomePairStartIndex[threadID];
-             genomePair <= m_genomePairEndIndex[threadID]; genomePair++) {
+        for (int genomePair = m_threadGPStarts[threadID];
+             genomePair <= m_threadGPEnds[threadID]; genomePair++) {
             int currGenomeA = m_JAC[genomePair].genomeA;
             int currGenomeB = m_JAC[genomePair].genomeB;
 
@@ -478,8 +509,8 @@ class ParFAAIRunner {
                     int BkLength = blockBkEnd - blockBkStart;
                     double J_Pi_Ga_Gb =
                         (double)(BkLength) /
-                        (double)(c_T[currProteinID][currGenomeA] +
-                                 c_T[currProteinID][currGenomeB] + BkLength);
+                        (double)(c_T.at(currProteinID, currGenomeA) +
+                                 c_T.at(currProteinID, currGenomeB) - BkLength);
                     S += J_Pi_Ga_Gb;
                     N += 1;
 
@@ -491,8 +522,8 @@ class ParFAAIRunner {
                     int BkLength = blockBkEnd - blockBkStart;
                     double J_Pi_Ga_Gb =
                         (double)(BkLength) /
-                        (double)(c_T[currProteinID][currGenomeA] +
-                                 c_T[currProteinID][currGenomeB] + BkLength);
+                        (double)(c_T.at(currProteinID, currGenomeA) +
+                                 c_T.at(currProteinID, currGenomeB) - BkLength);
                     S += J_Pi_Ga_Gb;
                     N += 1;
                 }
@@ -503,58 +534,57 @@ class ParFAAIRunner {
         }
     }
 
+  public:
     int computeJAC() {
         timer run_timer;
         m_nGenomePairs = m_nGenomes * (m_nGenomes - 1) / 2;
         // Prepare the JAC vector
         // PHASE 3: Compute the Jaccard Coefficient values
-#pragma omp parallel default(none)                                             
+#pragma omp parallel default(none) shared(std::cout)
         {
             int nThreads = omp_get_num_threads();
             int threadID = omp_get_thread_num();
 #pragma omp single
             { prepJAC(nThreads); }
             // Chunks of JAC this thread is responsible for - INCLUSIVE bounds
-            distributeGP(threadID, nThreads);
+            distributeGenomePairs(threadID, nThreads);
 #pragma omp barrier
-            IdType currentLocalEIndex = m_EStartIndex[threadID];
-            findEBlockStarts(currentLocalEIndex);
-#pragma omp barrier
-            findEBlockEnds(threadID, currentLocalEIndex);
-
-#pragma omp barrier
+            //
+            IdType currentLocalEIndex = m_threadEStarts[threadID];
+            findEBlockExtents(threadID, currentLocalEIndex);
             // #pragma omp single
-            // {
-            //  dbg_print();
-            // }
+            // { print_e(); }
+#pragma omp barrier
             computeEBlockJAC(threadID);
         }
+        run_timer.elapsed();
         run_timer.print_elapsed("Time taken to construct JAC: ", std::cout);
         return PFAAI_OK;
     }
 
     int computeAJI() {
+        m_AJI.resize(m_nGenomePairs);
         // PHASE 4: Finalize output
-#pragma omp parallel default(none) shared( std::cout)
+#pragma omp parallel default(none) shared(std::cout)
         {
             int threadID = omp_get_thread_num();
-#pragma omp single
-            {
-                std::cout << "Finished JAC construction" << std::endl;
-                m_AJI.resize(m_nGenomePairs);
-                std::cout << "Prepped AJI" << std::endl;
-            }
             // AJI
-            for (int genomePair = m_genomePairStartIndex[threadID];
-                 genomePair <= m_genomePairEndIndex[threadID]; genomePair++) {
+            for (int genomePair = m_threadGPStarts[threadID];
+                 genomePair <= m_threadGPEnds[threadID]; genomePair++) {
                 m_AJI[genomePair] = m_JAC[genomePair].S / m_JAC[genomePair].N;
             }
         }
         return PFAAI_OK;
     }
 
+    void print_aji() {
+        std::cout << "AJI Ouput : " << std::endl;
+        for (int i = 0; i < m_AJI.size(); i++) {
+            fmt::print(" GP[{:>3d}]->AJI[{:>3d}] : [{} -> {:03.2f}] \n", i, i,
+                       m_JAC[i], m_AJI[i]);
+        }
+    }
 
-  public:
     int run() {
         generateTetramerTuples();
         computeJAC();
