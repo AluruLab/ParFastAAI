@@ -1,0 +1,6 @@
+-I./ext/sqlite/
+-I./ext/fmt/include/
+-I./include/
+-I./ext/Catch2/src/
+-I./ext/cereal/include/
+-I./tests/
