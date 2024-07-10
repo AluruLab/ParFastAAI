@@ -6,13 +6,13 @@
 #define PAR_FAST_AAI_H
 #include <algorithm>
 #include <cassert>
-#include <chrono>
+#include <chrono>  // NOLINT
 #include <cstdlib>
 #include <iostream>
-#include <string>
-#include <vector>
 #include <omp.h>
 #include <sqlite3.h>
+#include <string>
+#include <vector>
 
 #include "fmt/core.h"
 #include "fmt/format.h"
@@ -26,7 +26,7 @@ template <typename DT1, typename DT2> struct IDPair {
     DT1 first;
     DT2 second;
     explicit IDPair(DT1 a, DT2 b) : first(a), second(b) {}
-    explicit IDPair() : first(DT1(-1)), second(DT2(-1)) {}
+    IDPair() : first(DT1(-1)), second(DT2(-1)) {}
     IDPair(const IDPair& other) : first(other.first), second(other.second) {}
     const IDPair& operator=(const IDPair& other) {
         first = other.first;
@@ -38,7 +38,7 @@ template <typename DT1, typename DT2> struct IDPair {
         return (first == other.first) && (second == other.second);
     }
 
-    template <class Archive> void serialize(Archive& archive) {
+    template <class Archive> void serialize(Archive& archive) {  // NOLINT
         archive(first, second);
     }
 };
@@ -49,15 +49,15 @@ std::ostream& operator<<(std::ostream& ox, IDPair<DT1, DT2> const& cx) {
     return ox;
 }
 
-template <typename DT> class IDMatrix {
+template <typename DT> class DMatrix {
     std::size_t m_nrows, m_ncols;
     std::vector<DT> m_data;
 
   public:
-    explicit IDMatrix(std::size_t nrows, std::size_t ncols, DT ivx = DT(0))
+    explicit DMatrix(std::size_t nrows, std::size_t ncols, DT ivx = DT(0))
         : m_nrows(nrows), m_ncols(ncols), m_data(nrows * ncols, ivx) {}
 
-    explicit IDMatrix(std::size_t nrows, std::size_t ncols, const DT* arr)
+    explicit DMatrix(std::size_t nrows, std::size_t ncols, const DT* arr)
         : m_nrows(nrows), m_ncols(ncols), m_data(arr, arr + (nrows * ncols)) {}
 
     inline DT& operator()(std::size_t i, std::size_t j) {
@@ -78,7 +78,7 @@ template <typename DT> class IDMatrix {
         m_data.resize(m_nrows * m_ncols);
     }
 
-    inline bool operator==(const IDMatrix<DT>& other) const {
+    inline bool operator==(const DMatrix<DT>& other) const {
         return (m_ncols == other.m_ncols && m_nrows == other.m_nrows &&
                 m_data == other.m_data);
     }
@@ -89,22 +89,23 @@ template <typename DT> class IDMatrix {
     std::size_t rows() const { return m_nrows; }
     std::size_t cols() const { return m_ncols; }
     const std::vector<DT>& data() const { return m_data; }
-    template <class Archive> void serialize(Archive& archive) {
+    template <class Archive> void serialize(Archive& archive) {  // NOLINT
         archive(m_nrows, m_ncols, m_data);
     }
 };
 
 template <typename IT>
-std::ostream& operator<<(std::ostream& ox, IDMatrix<IT> const& cx) {
+std::ostream& operator<<(std::ostream& ox, DMatrix<IT> const& cx) {
     ox << "{" << cx.rows() << ", " << cx.cols() << ", "
-       << fmt::format("{}", fmt::join(cx.data(), ",")) << "}";
+       << fmt::format("[{}]", fmt::join(cx.data(), ", ")) << "}";
     return ox;
 }
 
-template <typename IdType, typename PairType, typename MatrixType>
-class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
+template <typename IdType, typename IdPairType, typename IdMatrixType, typename JACType>
+class ParFAAIData : public DataStructInterface<IdType, IdPairType, IdMatrixType, JACType> {
+
     // Inputs
-    DataBaseInterface<IdType, PairType, MatrixType>& m_DBIf;
+    const DataBaseInterface<IdType, IdPairType, IdMatrixType>& m_DBIf;
     const std::vector<std::string>& m_proteinSet;
     const std::vector<std::string>& m_genomeSet;
     IdType m_nProtiens, m_nGenomes;
@@ -114,36 +115,36 @@ class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
     // Data structure
     std::vector<IdType> m_Lc;
     std::vector<IdType> m_Lp;
-    std::vector<PairType> m_F;
-    MatrixType m_T;
+    std::vector<IdPairType> m_F;
+    IdMatrixType m_T;
     bool m_flagInitL;
 
   public:
-    constexpr static IdType NTETRAMERS = (20 * 20 * 20 * 20);
-    constexpr static float DEFAULT_SLACK_PCT = 0.0;
+    using ParentT = DataStructInterface<IdType, IdPairType, IdMatrixType, JACType>;
 
-    explicit ParFAAIData(DataBaseInterface<IdType, PairType, MatrixType>& dbif,
-                         const std::vector<std::string>& protSet,
-                         const std::vector<std::string>& gnmSet,
-                         float slack = DEFAULT_SLACK_PCT)
+    explicit ParFAAIData(
+        const DataBaseInterface<IdType, IdPairType, IdMatrixType>& dbif,
+        const std::vector<std::string>& protSet,
+        const std::vector<std::string>& gnmSet,
+        float slack = ParentT::DEFAULT_SLACK_PCT)
         : m_DBIf(dbif), m_proteinSet(protSet), m_genomeSet(gnmSet),
           m_nProtiens(m_proteinSet.size()), m_nGenomes(m_genomeSet.size()),
-          m_slack(slack), m_errorCode(PFAAI_OK), m_Lc(NTETRAMERS, 0),
-          m_Lp(NTETRAMERS, 0), m_T(m_nProtiens, m_nGenomes),
+          m_slack(slack), m_errorCode(PFAAI_OK), m_Lc(ParentT::NTETRAMERS, 0),
+          m_Lp(ParentT::NTETRAMERS, 0), m_T(m_nProtiens, m_nGenomes),
           m_flagInitL(false) {}
 
     inline const std::vector<IdType>& getLc() const { return m_Lc; }
     inline const std::vector<IdType>& getLp() const { return m_Lp; }
-    inline const MatrixType& getT() const { return m_T; }
-    inline const std::vector<PairType>& getF() const { return m_F; }
+    inline const IdMatrixType& getT() const { return m_T; }
+    inline const std::vector<IdPairType>& getF() const { return m_F; }
     inline float getSlackPercentage() const { return m_slack; }
-    inline IdType getTetramerCount() const { return NTETRAMERS; }
-    inline IdType getGenomeCount() const { return m_nGenomes; }
+    inline IdType getQryGenomeCount() const { return m_nGenomes; }
+    inline IdType getTgtGenomeCount() const { return m_nGenomes; }
     inline IdType getGPCount() const {
         return (m_nGenomes * (m_nGenomes - 1) / 2);
     }
 
-    ~ParFAAIData() { m_DBIf.closeDB(); }
+    ~ParFAAIData() { }
 
   private:
     void printThreadTimes(const std::string& prt_prefix,
@@ -167,22 +168,38 @@ class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
         return genomePairToJACIndex(m_nGenomes, genomeA, genomeB);
     }
 
+    void initJAC(std::vector<JACType>& jac_tuples) const { //  NOLINT
+        jac_tuples.resize(getGPCount());
+        IdType gA = 0, gB = 1;
+        for (int i = 0; i < jac_tuples.size(); i++) {
+            jac_tuples[i].genomeA = gA;
+            jac_tuples[i].genomeB = gB;
+
+            if (gB == m_nGenomes - 1) {
+                gA += 1;
+                gB = gA + 1;
+            } else {
+                gB += 1;
+            }
+        }
+    }
+
     PFAAI_ERROR_CODE constructLcandLp() {
         std::vector<int> errorCodes;
         // Lc construction
 #pragma omp parallel default(none) shared(errorCodes)
         {
-            int totalNumThreads = omp_get_num_threads();
+            int nThreads = omp_get_num_threads();
             int threadID = omp_get_thread_num();
-            int tetramerStart =
-                BLOCK_LOW(threadID, totalNumThreads, NTETRAMERS);
-            int tetramerEnd = BLOCK_HIGH(threadID, totalNumThreads, NTETRAMERS);
+            IdType tetraStart =
+                BLOCK_LOW(threadID, nThreads, ParentT::NTETRAMERS);
+            IdType tetraEnd = BLOCK_HIGH(threadID, nThreads, ParentT::NTETRAMERS);
 #pragma omp single
-            { errorCodes.resize(totalNumThreads, 0); }
+            { errorCodes.resize(nThreads, 0); }
 
             for (const std::string protein : m_proteinSet) {
                 int qryErrCode = m_DBIf.queryGenomeTetramers(
-                    protein, tetramerStart, tetramerEnd, m_Lc);
+                    protein, tetraStart, tetraEnd, m_Lc);
                 if (qryErrCode != SQLITE_OK) {
                     errorCodes[threadID] = qryErrCode;
                 }
@@ -203,9 +220,10 @@ class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
         return PFAAI_OK;
     }
 
-  private:  // construction functions
-    inline void distributeFTasks(int nThreads, std::vector<int>& tetramerStart,
-                                 std::vector<int>& tetramerEnd) {
+  protected:  // construction functions
+    inline void distributeFTasks(int nThreads,
+                                 std::vector<IdType>& tetramerStart,  // NOLINT
+                                 std::vector<IdType>& tetramerEnd) {  // NOLINT
         int nTasks = m_F.size();
         std::vector<int> nTasksDist(nThreads, 0);
         int nTasksPerThread =
@@ -232,16 +250,18 @@ class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
 
   public:
     PFAAI_ERROR_CODE constructF() {
-        std::vector<int> tetramerStart, tetramerEnd, errorCodes;
+        std::vector<IdType> tetramerStart, tetramerEnd;
+        std::vector<int> errorCodes;
         std::vector<timer> threadTimers;
-        assert(m_Lp[NTETRAMERS - 1] > 0);
-        if(m_flagInitL == false){
+        assert(m_Lp[ParentT::NTETRAMERS - 1] > 0);
+        if (m_flagInitL == false) {
             std::cout << "Lc and Lp are not Initialized" << std::endl;
             return PFAAI_ERR_CONSTRUCT;
         }
         //
-        m_F.resize(m_Lp[NTETRAMERS - 1] + m_Lc[NTETRAMERS - 1],
-                   PairType(-1, -1));
+        m_F.resize(m_Lp[ParentT::NTETRAMERS - 1] +
+                       m_Lc[ParentT::NTETRAMERS - 1],
+                   IdPairType(-1, -1));
 #pragma omp parallel default(none)                                             \
     shared(tetramerStart, tetramerEnd, errorCodes, threadTimers)
         {
@@ -265,7 +285,7 @@ class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
                         [](int rc) { return rc != SQLITE_OK; }))
             return (m_errorCode = PFAAI_ERR_CONSTRUCT);
         //
-        printThreadTimes(" F construction : ", threadTimers);
+        // printThreadTimes(" F construction : ", threadTimers);
         return PFAAI_OK;
     }
 
@@ -273,12 +293,6 @@ class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
         std::vector<timer> threadTimers;
         int nProteins = m_proteinSet.size();
         std::vector<int> errorCodes;
-        //
-        // m_T.resize(nProteins);
-        // for (auto& row : m_T) {
-        //     row.resize(m_nGenomes, 0);
-        // }
-        //
 #pragma omp parallel default(none) shared(nProteins, errorCodes, threadTimers)
         {
             int nThreads = omp_get_num_threads();
@@ -303,7 +317,7 @@ class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
                         [](int rc) { return rc != SQLITE_OK; }))
             return (m_errorCode = PFAAI_ERR_CONSTRUCT);
         //
-        printThreadTimes("T construction : ", threadTimers);
+        // printThreadTimes("T construction : ", threadTimers);
         return PFAAI_OK;
     }
 
@@ -311,9 +325,9 @@ class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
         timer run_timer;
         PFAAI_ERROR_CODE errorCode = constructLcandLp();
         run_timer.elapsed();
-        run_timer.print_elapsed("Lc, Lp contruction time: ", std::cout);
+        run_timer.print_elapsed("Lc & Lp contruction : ", std::cout);
         if (errorCode != PFAAI_OK) {
-            std::cerr << "Error in constructing Lc and Lp, error code = "
+            std::cerr << "Error in constructing Lc and Lp, error code : "
                       << errorCode << std::endl;
             return errorCode;
         }
@@ -321,9 +335,9 @@ class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
         run_timer.reset();
         errorCode = constructF();
         run_timer.elapsed();
-        run_timer.print_elapsed("F contruction time: ", std::cout);
+        run_timer.print_elapsed("F contruction       : ", std::cout);
         if (errorCode != PFAAI_OK) {
-            std::cerr << "Error in constructing F, error code = " << errorCode
+            std::cerr << "Error in constructing F, error code : " << errorCode
                       << std::endl;
             return errorCode;
         }
@@ -331,9 +345,9 @@ class ParFAAIData : public DataStructInterface<IdType, PairType, MatrixType> {
         run_timer.reset();
         errorCode = constructT();
         run_timer.elapsed();
-        run_timer.print_elapsed("T construction time: ", std::cout);
+        run_timer.print_elapsed("T construction      : ", std::cout);
         if (errorCode != PFAAI_OK) {
-            std::cerr << "Error in constructing T, error code = " << errorCode
+            std::cerr << "Error in constructing T, error code : " << errorCode
                       << std::endl;
             return errorCode;
         }

@@ -2,11 +2,15 @@ ext/sqlite-amalgamation-3450100/sqlite3
 ext/sqlite-amalgamation-3450100/sqlite3.o
 ext/sqlite/sqlite3
 ext/sqlite/sqlite3.o
+ext/fmt/src/format.o
 data/comprehensive_proks.db
 src/main.o
 main.exe
+par_faai.exe
 build/
+build.release/
 bkup.txt
 bkup2.txt
 ext/fmt-10.2.1.zip
+ext/CLI11-v2.4.2.zip
 include/catch2/catch_user_config.hpp

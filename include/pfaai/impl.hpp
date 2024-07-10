@@ -1,17 +1,18 @@
 #ifndef PFAAI_RUNNER_HPP
 #define PFAAI_RUNNER_HPP
 
-#include <cstdlib>
 #include <cmath>
-#include <omp.h>
-#include <vector>
+#include <cstdlib>
 #include <fmt/format.h>
+#include <omp.h>
+#include <string>
+#include <vector>
 
 #include "pfaai/interface.hpp"
 #include "pfaai/psort.hpp"
 #include "pfaai/utils.hpp"
 
-template <typename IdType = int> struct ETriple {
+template <typename IdType> struct ETriple {
     IdType proteinIndex;
     IdType genomeA;
     IdType genomeB;
@@ -37,63 +38,71 @@ template <typename IdType = int> struct ETriple {
                (proteinIndex == other.proteinIndex);
     }
 
-    template <class Archive> void serialize(Archive& archive) {
+    template <class Archive> void serialize(Archive& archive) {  // NOLINT
         archive(proteinIndex, genomeA, genomeB);
     }
 };
 
+template <typename IT = int> std::string format_as(const ETriple<IT>& ijx) {
+    return fmt::format("({:>3d}, {:>3d}, {:>3d})", ijx.genomeA, ijx.genomeB,
+                       ijx.proteinIndex);
+}
+
 template <typename IT>
 std::ostream& operator<<(std::ostream& ox, ETriple<IT> const& cx) {
-    ox << "(" << cx.proteinIndex << ", " << cx.genomeA << ", " << cx.genomeB
+    ox << "(" << cx.genomeB << ", " << cx.genomeA << ", " << cx.proteinIndex
        << ")";
     return ox;
 }
 
-template <typename IdType = int, typename SType = double> struct JACTuple {
+template <typename IdType, typename ValueType = double> struct JACTuple {
     IdType genomeA;
     IdType genomeB;
-    SType S;
+    ValueType S;
     IdType N;
 
-    inline bool operator==(const JACTuple<IdType, SType>& other) const {
+    inline bool operator==(const JACTuple<IdType, ValueType>& other) const {
         return (genomeA == other.genomeA) && (genomeB == other.genomeB) &&
                (N == other.N) && (std::abs(S - other.S) < 1e-7);
     }
-    
-    template <class Archive> void serialize(Archive& archive) {
+
+    template <class Archive> void serialize(Archive& archive) {  // NOLINT
         archive(genomeA, genomeB, S, N);
     }
 };
 
-template <typename IdType = int, typename SType = double>
-std::string format_as(const JACTuple<IdType, SType>& ijx) {
-    return fmt::format("({:>3d}, {:>3d}, {:>03.2f}, {:>3d})", ijx.genomeA, ijx.genomeB,
-                       ijx.S, ijx.N);
+template <typename IT = int, typename VT = double>
+std::string format_as(const JACTuple<IT, VT>& ijx) {
+    return fmt::format("({:>3d}, {:>3d}, {:>03.2f}, {:>3d})", ijx.genomeA,
+                       ijx.genomeB, ijx.S, ijx.N);
 }
 
-template <typename IT, typename ST>
-std::ostream& operator<<(std::ostream& ox, JACTuple<IT, ST> const& cx) {
-    ox << "(" << cx.genomeA << ", " << cx.genomeB << ", " << cx.S << ", " <<
-       cx.N << ")";
+template <typename IT, typename VT>
+std::ostream& operator<<(std::ostream& ox, JACTuple<IT, VT> const& cx) {
+    ox << "(" << cx.genomeA << ", " << cx.genomeB << ", " << cx.S << ", "
+       << cx.N << ")";
     return ox;
 }
 
-
-
 template <typename IdType, typename IdPairType, typename IdMatrixType,
-          typename SType = double>
-class ParFAAIRunner {
+          typename ValueType>
+class ParFAAIImpl {
+  public:
+    using JACType = JACTuple<IdType, ValueType>;
+    using DSType =
+        DataStructInterface<IdType, IdPairType, IdMatrixType, JACType>;
+
+  private:
     // Data references
-    const DataStructInterface<IdType, IdPairType, IdMatrixType>& c_faaiDataRef;
+    const DSType& c_faaiDataRef;
     const std::vector<int>& c_Lc;
     const std::vector<int>& c_Lp;
     const std::vector<IdPairType>& c_F;
     const IdMatrixType& c_T;
     float m_slack;
     IdType m_nTetramers;
-    IdType m_nGenomes;
     //
-    int m_nGenomePairs;
+    IdType m_nGenomePairs;
 
     // tetramer tuples : Array E construction : Phase 2
     std::vector<IdType> m_tetramerStart, m_tetramerEnd;  // size nThreads
@@ -109,25 +118,23 @@ class ParFAAIRunner {
         m_genomePairEEndIndex;  // of size m_nGenomePairs
 
     // Jaccard Step
-    std::vector<JACTuple<IdType, SType>> m_JAC;  // of size m_nGenomePairs
+    std::vector<JACType> m_JAC;  // of size m_nGenomePairs
 
     // AJI step
-    std::vector<SType> m_AJI;  // of size m_nGenomePairs
+    std::vector<ValueType> m_AJI;  // of size m_nGenomePairs
 
   public:
-    explicit ParFAAIRunner(
-        const DataStructInterface<IdType, IdPairType, IdMatrixType>& fDataRef)
+    explicit ParFAAIImpl(const DSType& fDataRef)
         : c_faaiDataRef(fDataRef), c_Lc(c_faaiDataRef.getLc()),
           c_Lp(c_faaiDataRef.getLp()), c_F(c_faaiDataRef.getF()),
           c_T(c_faaiDataRef.getT()),
           m_slack(c_faaiDataRef.getSlackPercentage()),
           m_nTetramers(c_faaiDataRef.getTetramerCount()),
-          m_nGenomes(c_faaiDataRef.getGenomeCount()),
           m_nGenomePairs(c_faaiDataRef.getGPCount()) {}
 
     const std::vector<ETriple<IdType>>& getE() const { return m_E; }
     const std::vector<JACTuple<IdType>>& getJAC() const { return m_JAC; }
-    const std::vector<SType>& getAJI() const { return m_AJI; }
+    const std::vector<ValueType>& getAJI() const { return m_AJI; }
 
     inline IdType genomePairToJACIndex(IdType genomeA, IdType genomeB) const {
         return c_faaiDataRef.genomePairToJACIndex(genomeA, genomeB);
@@ -293,7 +300,6 @@ class ParFAAIRunner {
             for (int i = 0; i < m_threadESize.size(); i++) {
                 totalESize += m_threadESize[i];
             }
-
 #pragma omp single
             { m_E.resize(totalESize); }
             // Get the start indices of each thread-partions of E by parallel
@@ -310,39 +316,24 @@ class ParFAAIRunner {
 #pragma omp barrier
         }
         run_timer.elapsed();
-        run_timer.print_elapsed("Time taken to construct E: ", std::cout);
-        timer srt_timer;
+        run_timer.print_elapsed("E construction      : ", std::cout);
         // Parallel Sort E TODO(): Sorting speed is inconsistent, why ?
+        timer srt_timer;
 #pragma omp single
         { parallelMergeSort(m_E, 0, m_E.size() - 1, 5); }
-        // std::sort(m_E.begin(), m_E.end());
-        //
         srt_timer.elapsed();
-        srt_timer.print_elapsed("Time taken to sort E: ", std::cout);
+        srt_timer.print_elapsed("E parallel sorting  : ", std::cout);
         return PFAAI_OK;
     }
 
   private:
     void prepJAC(const int& nThreads) {
-        m_JAC.resize(m_nGenomePairs);
         m_genomePairEStartIndex.resize(m_nGenomePairs);
         m_genomePairEEndIndex.resize(m_nGenomePairs);
-        for (int i = 0, gA = 0, gB = 1; i < m_JAC.size(); i++) {
-            m_JAC[i].genomeA = gA;
-            m_JAC[i].genomeB = gB;
-            m_JAC[i].S = 0.0;
-            m_JAC[i].N = 0;
-
-            if (gB == m_nGenomes - 1) {
-                gA += 1;
-                gB = gA + 1;
-            } else {
-                gB += 1;
-            }
-        }
+        c_faaiDataRef.initJAC(m_JAC);
+        //
         m_threadGPStarts.resize(nThreads);
         m_threadGPEnds.resize(nThreads);
-        std::cout << "Prepped JAC" << std::endl;
     }
 
   protected:
@@ -368,7 +359,8 @@ class ParFAAIRunner {
         }
     }
 
-    void findEBlockExtents(const int& threadID, IdType& currentLocalEIndex) {
+    void findEBlockExtents(const int& threadID,
+                           IdType& currentLocalEIndex) {  // NOLINT
         // We need to know where in the sorted E does each genome pair start
         // and end Each thread can look though its local chunk of E and help
         // fill in the 2 arrays: genomePairEStartIndex, genomePairEEndIndex
@@ -508,9 +500,10 @@ class ParFAAIRunner {
                 if (blockBkEnd <= blockBlEnd) {
                     int BkLength = blockBkEnd - blockBkStart;
                     double J_Pi_Ga_Gb =
-                        (double)(BkLength) /
-                        (double)(c_T.at(currProteinID, currGenomeA) +
-                                 c_T.at(currProteinID, currGenomeB) - BkLength);
+                        static_cast<double>(BkLength) /
+                        static_cast<double>(c_T.at(currProteinID, currGenomeA) +
+                                            c_T.at(currProteinID, currGenomeB) -
+                                            BkLength);
                     S += J_Pi_Ga_Gb;
                     N += 1;
 
@@ -521,9 +514,10 @@ class ParFAAIRunner {
                     // Finish the last computation
                     int BkLength = blockBkEnd - blockBkStart;
                     double J_Pi_Ga_Gb =
-                        (double)(BkLength) /
-                        (double)(c_T.at(currProteinID, currGenomeA) +
-                                 c_T.at(currProteinID, currGenomeB) - BkLength);
+                        static_cast<double>(BkLength) /
+                        static_cast<double>(c_T.at(currProteinID, currGenomeA) +
+                                            c_T.at(currProteinID, currGenomeB) -
+                                            BkLength);
                     S += J_Pi_Ga_Gb;
                     N += 1;
                 }
@@ -537,7 +531,6 @@ class ParFAAIRunner {
   public:
     int computeJAC() {
         timer run_timer;
-        m_nGenomePairs = m_nGenomes * (m_nGenomes - 1) / 2;
         // Prepare the JAC vector
         // PHASE 3: Compute the Jaccard Coefficient values
 #pragma omp parallel default(none) shared(std::cout)
@@ -558,7 +551,7 @@ class ParFAAIRunner {
             computeEBlockJAC(threadID);
         }
         run_timer.elapsed();
-        run_timer.print_elapsed("Time taken to construct JAC: ", std::cout);
+        run_timer.print_elapsed("JAC Construction    : ", std::cout);
         return PFAAI_OK;
     }
 
@@ -575,14 +568,6 @@ class ParFAAIRunner {
             }
         }
         return PFAAI_OK;
-    }
-
-    void print_aji() {
-        std::cout << "AJI Ouput : " << std::endl;
-        for (int i = 0; i < m_AJI.size(); i++) {
-            fmt::print(" GP[{:>3d}]->AJI[{:>3d}] : [{} -> {:03.2f}] \n", i, i,
-                       m_JAC[i], m_AJI[i]);
-        }
     }
 
     int run() {

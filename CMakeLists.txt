@@ -15,6 +15,7 @@ set(SQLITE_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/sqlite")
 set(FMT_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/fmt")
 set(CATCH2_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/Catch2")
 set(CEREAL_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/cereal")
+set(CLI11_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/CLI11")
 # set(CMAKE_BUILD_TYPE Debug)
 # set(CMAKE_BUILD_TYPE Release)
 
@@ -32,6 +33,8 @@ add_library(fmt INTERFACE)
 target_include_directories(fmt INTERFACE ${FMT_SRC_DIR}/include)
 add_library(cereal INTERFACE)
 target_include_directories(cereal INTERFACE ${CEREAL_SRC_DIR}/include)
+add_library(cli11 INTERFACE)
+target_include_directories(cli11 INTERFACE ${CLI11_SRC_DIR}/include)
 
 # Check if OpenMP is available
 find_package(OpenMP REQUIRED)
@@ -52,7 +55,7 @@ add_executable(${PROJECT_EXEC} src/main.cpp ${SQLITE_SRC_DIR}/sqlite3.c
 add_compile_definitions(PARFASTAAI_VERSION=${PARFASTAAI_VERSION})
 # OpenMP
 include_directories(${OpenMP_CXX_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_EXEC} PUBLIC OpenMP::OpenMP_CXX sqlite fmt
+target_link_libraries(${PROJECT_EXEC} PUBLIC OpenMP::OpenMP_CXX sqlite fmt cli11
                       cereal ${CMAKE_DL_LIBS})
 
 

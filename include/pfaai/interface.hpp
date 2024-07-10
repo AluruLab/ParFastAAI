@@ -23,40 +23,50 @@ class DataBaseInterface {
     virtual const char* getDBError() const = 0;
     virtual std::string getDBPath() const = 0;
     virtual PFAAI_ERROR_CODE validate() const = 0;
+    virtual inline int closeDB() = 0;
     //
-    virtual int queryGenomeTetramers(const std::string protein,
-                                     IdType tetramerStart, IdType tetramerEnd,
-                                     std::vector<IdType>& Lc) = 0;
+    virtual int
+    queryGenomeTetramers(const std::string protein, IdType tetramerStart,
+                         IdType tetramerEnd,
+                         std::vector<IdType>& Lc) const = 0;  // NOLINT
     virtual int
     queryProtienSetGPPairs(const std::vector<std::string>& proteinSet,
                            IdType tetramerStart, IdType tetramerEnd,
-                           std::vector<IdType>& Lp,
-                           std::vector<IdPairType>& F) = 0;
-    virtual int queryMetaData(std::vector<std::string>& proteinSet,
-                              std::vector<std::string>& genomeSet) = 0;
+                           std::vector<IdType>& Lp,                // NOLINT
+                           std::vector<IdPairType>& F) const = 0;  // NOLINT
+    virtual int
+    queryMetaData(std::vector<std::string>& proteinSet,            // NOLINT
+                  std::vector<std::string>& genomeSet) const = 0;  // NOLINT
     virtual int
     queryProtienTetramerCounts(const std::vector<std::string>& proteinSet,
                                IdType proteinStart, IdType proteinEnd,
-                               IdMatType& T) = 0;
+                               IdMatType& T) const = 0;  // NOLINT
     //
-    virtual inline int closeDB() = 0;
     virtual ~DataBaseInterface() {}
 };
 
-template <typename IdType, typename IdPairType, typename IdMatrixType>
+template <typename IdType, typename IdPairType, typename IdMatrixType,
+          typename JACType>
 class DataStructInterface {
   public:
+    // constants
+    constexpr static IdType NTETRAMERS = (20 * 20 * 20 * 20);
+    constexpr static float DEFAULT_SLACK_PCT = 0.0;
+    //
     DataStructInterface() {}
     //
-    virtual const std::vector<IdType>& getLc() const = 0; 
+    virtual const std::vector<IdType>& getLc() const = 0;
     virtual const std::vector<IdType>& getLp() const = 0;
     virtual const IdMatrixType& getT() const = 0;
-    virtual const std::vector<IdPairType>& getF() const  = 0;
+    virtual const std::vector<IdPairType>& getF() const = 0;
     virtual float getSlackPercentage() const = 0;
-    virtual IdType getTetramerCount() const = 0;
-    virtual IdType getGenomeCount() const = 0;
+    virtual inline IdType getTetramerCount() const { return NTETRAMERS; }
+    virtual IdType getQryGenomeCount() const = 0;
+    virtual IdType getTgtGenomeCount() const = 0;
     virtual IdType getGPCount() const = 0;
-    virtual  IdType genomePairToJACIndex(IdType genomeA, IdType genomeB) const = 0;
+    virtual IdType genomePairToJACIndex(IdType genomeA,
+                                        IdType genomeB) const = 0;
+    virtual void initJAC(std::vector<JACType>& jac_tuples) const = 0;  // NOLINT
     //
     virtual ~DataStructInterface() {}
 };

@@ -5,10 +5,11 @@
 
 #ifndef UTILS_HPP
 #define UTILS_HPP
+#include <iomanip>
 #include <string>
 #include <iostream>
-#include <chrono>
-#include <ratio>
+#include <chrono>   // NOLINT
+#include <ratio>    // NOLINT
 
 /// macros for block decomposition
 #define BLOCK_LOW(i, p, n) ((i * n) / p)
@@ -75,9 +76,14 @@ template <typename duration> class timer_impl {
     }
 
     void print_elapsed(const std::string prefix, std::ostream& ox) const {
-	     ox << prefix << _elapsed_time << " milliseconds ( " 
-            << elapsed_to_mins() << " minutes " 
-            << elapsed_to_seconds() << " seconds)." << std::endl;
+	    ox << prefix;
+        ox.precision(3);
+        ox << std::setw(10) << _elapsed_time << " ms (" ;
+        ox.precision(4);
+        ox << std::setw(10) << elapsed_to_seconds() << " sec/" ;
+        ox.precision(4);
+        ox << std::setw(10) << elapsed_to_mins() << " min)." ;
+        ox << std::endl;
     }
 };
 

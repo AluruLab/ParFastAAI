@@ -43,10 +43,6 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
         : m_pathToDb(dbPath), m_sqltDbPtr(initDB(dbPath, &m_dbErrorCode)),
           m_dbNames(dbn) {}
 
-    // inline bool isDBOpenError() const { return m_dbErrorCode != SQLITE_OK; }
-
-    // inline bool isDBNull() const { return m_sqltDbPtr == nullptr; }
-
     virtual inline bool isDBOpen() const {
         return m_dbErrorCode == SQLITE_OK && m_sqltDbPtr != nullptr;
     }
@@ -88,7 +84,6 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
     }
 
 
-
     virtual ~SQLiteInterface() {
         if (m_dbErrorCode == SQLITE_OK && m_sqltDbPtr != nullptr) {
             closeDB();
@@ -102,15 +97,7 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
     }
 
     int queryGenomeTetramers(const std::string protein, IdType tetramerStart,
-                             IdType tetramerEnd, std::vector<IdType>& Lc) {
-        // std::string sqlQuery = "SELECT tetra, genomes FROM `" + protein +
-        //                        "_tetras` WHERE tetra BETWEEN ? AND ?";
-        //
-        // std::string sqlQuery0 = "SELECT " + _dbNames.TMTAB_COLUMN_TT + "," +
-        //                       _dbNames.TMTAB_COLUMN_GM + " FROM `" + protein
-        //                       + _dbNames.TMTAB_SUFFIX +
-        //                       "` WHERE tetra BETWEEN ? AND ?";
-        //
+                             IdType tetramerEnd, std::vector<IdType>& Lc) const { // NOLINT
         const std::string genomeTetramerQueryFmt =
             "SELECT {}, {} FROM `{}{}` WHERE {} BETWEEN ? AND ?";
 
@@ -146,8 +133,8 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
 
     int queryProtienSetGPPairs(const std::vector<std::string>& proteinSet,
                                IdType tetramerStart, IdType tetramerEnd,
-                               std::vector<IdType>& Lp,
-                               std::vector<IdPairType>& F) {
+                               std::vector<IdType>& Lp,  // NOLINT
+                               std::vector<IdPairType>& F) const { //NOLINT
         std::ostringstream oss;
         const std::string proteinSetTetramersQueryFmt =
             "SELECT {}, {}, {} as source_table FROM `{}{}` WHERE {} BETWEEN "
@@ -201,7 +188,7 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
 
     int queryProtienTetramerCounts(const std::vector<std::string>& proteinSet,
                                    IdType proteinStart, IdType proteinEnd,
-                                   IdMatType& T) {
+                                   IdMatType& T) const { // NOLINT
         std::ostringstream oss;
         const std::string proteinSetTetramerCtQueryFmt =
             "SELECT {}, length({}), {} as source_table from `{}{}` ";
@@ -241,8 +228,8 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
         return SQLITE_OK;
     }
 
-    int queryMetaData(std::vector<std::string>& proteinSet,
-                      std::vector<std::string>& genomeSet) {
+    int queryMetaData(std::vector<std::string>& proteinSet, // NOLINT
+                      std::vector<std::string>& genomeSet) const { //NOLINT
 
         const std::string countQueryFmt =
             "SELECT count(*) as count_genome FROM {}";

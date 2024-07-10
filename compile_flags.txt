@@ -3,4 +3,5 @@
 -I./include/
 -I./ext/Catch2/src/
 -I./ext/cereal/include/
+-I./ext/CLI11/include/
 -I./tests/

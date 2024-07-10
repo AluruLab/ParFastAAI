@@ -1,18 +1,21 @@
 
-#include "pfaai_tests.hpp"
+#include "pfaai_tests.hpp"  // NOLINT
 #include "catch2/catch_test_macros.hpp"
 #include "pfaai/data.hpp"
 #include "pfaai/sqltif.hpp"
-#include "pfaai/runner.hpp"
+#include "pfaai/impl.hpp"
 #include <catch2/catch_all.hpp>
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/vector.hpp>
 #include <fstream>
 
 using IdType = int;
+using ValueType = double;
 using IdPairType = IDPair<IdType, IdType>;
-// using IdMatType = std::vector<std::vector<IdType>>;
-using IdMatType = IDMatrix<IdType>;
+using IdMatType = DMatrix<IdType>;
+using SQLTIfType = SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames>;
+using PFImplT = ParFAAIImpl<IdType, IdPairType, IdMatType, ValueType>;
+using PFDataT = ParFAAIData<IdType, IdPairType, IdMatType, PFImplT::JACType>;
 
 static constexpr char G_DB_PATH[] = "data/modified_xantho_fastaai2.db";
 static constexpr IdType G_NTETRAMERS = (20 * 20 * 20 * 20);
@@ -30,14 +33,21 @@ static const std::vector<std::vector<IdType>> G_QRY_PST_TETRA_CTS = {
      386, 386, 386, 386, 386, 386, 386, 383, 384, 384},
     {121, 121, 121, 121, 121, 121, 121, 121, 121, 121,
      121, 121, 121, 121, 121, 121, 121, 121, 121, 121}};
-//
 
 // TETRAMER, # genomes, source table
 static constexpr IdType G_QRT_PST_GP_PAIRS[388][3] = TESTDB_PSET_GP_PAIRS;
 
+// Reference data files to compare
+static constexpr char REF_LC_ARRAY[] = "data/xanthodb_lc_array.bin";
+static constexpr char REF_LP_ARRAY[] = "data/xanthodb_lp_array.bin";
+static constexpr char REF_F_ARRAY[] = "data/xanthodb_f_array.bin";
+static constexpr char REF_T_MATRIX[] = "data/xanthodb_t_matrix.bin";
+static constexpr char REF_SRTD_E_ARRAY[] = "data/xanthodb_sorted_e_array.bin";
+static constexpr char REF_JAC_DATA[] = "data/xanthodb_jac.bin";
+static constexpr char REF_AJI_DATA[] = "data/xanthodb_aji.bin";
+
 TEST_CASE("Query Genome Metadata", "[meta data test]") {
-    SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames> sqlt_if(
-        G_DB_PATH);
+    SQLTIfType sqlt_if(G_DB_PATH);
     std::vector<std::string> protienSet, genomeSet;
     IdType nGenomes;
     sqlt_if.queryMetaData(protienSet, genomeSet);
@@ -47,8 +57,7 @@ TEST_CASE("Query Genome Metadata", "[meta data test]") {
 
 TEST_CASE("Query No. of Tetramers", "[ntetramers query test]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0);
-    SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames> sqlt_if(
-        G_DB_PATH);
+    SQLTIfType sqlt_if(G_DB_PATH);
     sqlt_if.queryGenomeTetramers("PF00119.20", 2060, 2144, Lc);
     REQUIRE(Lc[2060] == 20);
     REQUIRE(Lc[2100] == 20);
@@ -59,12 +68,7 @@ TEST_CASE("Query No. of Tetramers", "[ntetramers query test]") {
 TEST_CASE("Query Protien Tetramer Counts", "[prot teteramer counts]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0), Lp(G_NTETRAMERS, 0);
     IdMatType T(G_PROTIENSET_SIZE, G_GENOMESET_SIZE);
-    // IdMatType T(G_PROTIENSET.size());
-    // for (auto& tx : T) {
-    //     tx.resize(G_NGENOMES);
-    // }
-    SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames> sqlt_if(
-        G_DB_PATH);
+    SQLTIfType sqlt_if(G_DB_PATH);
     sqlt_if.queryProtienTetramerCounts(G_PROTIENSET, 0, 3, T);
     REQUIRE(G_QRY_PST_TETRA_CTS[0] == T.row(0));
     REQUIRE(G_QRY_PST_TETRA_CTS[1] == T.row(1));
@@ -89,8 +93,7 @@ TEST_CASE("Query Protien Set Tetramers", "[prot set teteramers]") {
 
     std::vector<IdPairType> F(Lp[G_NTETRAMERS - 1] + Lc[G_NTETRAMERS - 1],
                               IdPairType(-1, -1));
-    SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames> sqlt_if(
-        G_DB_PATH);
+    SQLTIfType sqlt_if(G_DB_PATH);
     int rc = sqlt_if.queryProtienSetGPPairs(G_PROTIENSET, 2000, 3000, Lp, F);
     REQUIRE(rc == SQLITE_OK);
     REQUIRE(Lp[2000] == 0);
@@ -106,19 +109,18 @@ TEST_CASE("Test Data Structures Construction", "[construct Lc Lp F T]") {
     std::vector<std::string> genomeSet;
     sqlt_if.queryMetaData(proteinSet, genomeSet);
     //
-    ParFAAIData<IdType, IdPairType, IdMatType> pfaaiData(sqlt_if, proteinSet,
-                                                         genomeSet);
+    PFDataT pfaaiData(sqlt_if, proteinSet, genomeSet);
     pfaaiData.constructLcandLp();
     std::vector<IdType> Lc = pfaaiData.getLc();
     std::vector<IdType> Lp = pfaaiData.getLp();
     std::vector<IdType> refLc, refLp;
-    {
-        std::ifstream lcx("data/xanthodb_lc_array.bin", std::ios::binary);
+    { 
+        std::ifstream lcx(REF_LC_ARRAY, std::ios::binary);
         cereal::BinaryInputArchive iarchive(lcx); 
         iarchive(refLc);
     }
     {
-        std::ifstream lcx("data/xanthodb_lp_array.bin", std::ios::binary);
+        std::ifstream lcx(REF_LP_ARRAY, std::ios::binary);
         cereal::BinaryInputArchive iarchive(lcx); 
         iarchive(refLp);
     }
@@ -129,7 +131,7 @@ TEST_CASE("Test Data Structures Construction", "[construct Lc Lp F T]") {
     std::vector<IdPairType> F = pfaaiData.getF();
     std::vector<IdPairType> refF;
     {
-        std::ifstream fcx("data/xanthodb_f_array.bin", std::ios::binary);
+        std::ifstream fcx(REF_F_ARRAY, std::ios::binary);
         cereal::BinaryInputArchive iarchive(fcx);
         iarchive(refF);
     }
@@ -139,53 +141,53 @@ TEST_CASE("Test Data Structures Construction", "[construct Lc Lp F T]") {
     IdMatType T = pfaaiData.getT();
     IdMatType refT(G_PROTIENSET_SIZE, G_GENOMESET_SIZE);
     {
-        std::ifstream tcx("data/xanthodb_t_matrix.bin", std::ios::binary);
+        std::ifstream tcx(REF_T_MATRIX, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
         iarchive(refT);
     }
     REQUIRE(refT == T);
 }
 
-TEST_CASE("Test Runner ouputs", "[construct E JAC and AJI]") {
+TEST_CASE("Test Impl ouputs", "[construct E JAC and AJI]") {
     SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames> sqlt_if(
         G_DB_PATH);
     std::vector<std::string> proteinSet;
     std::vector<std::string> genomeSet;
     sqlt_if.queryMetaData(proteinSet, genomeSet);
     //
-    ParFAAIData<IdType, IdPairType, IdMatType> pfaaiData(sqlt_if, proteinSet,
-                                                         genomeSet);
+    PFDataT pfaaiData(sqlt_if, proteinSet, genomeSet);
     pfaaiData.construct();
     //
-    ParFAAIRunner<IdType, IdPairType, IdMatType, double> pfaaiRunner(pfaaiData);
+    ParFAAIImpl<IdType, IdPairType, IdMatType, double> pfaaiImpl(pfaaiData);
 
-    pfaaiRunner.generateTetramerTuples();
-    std::vector<ETriple<IdType>> E = pfaaiRunner.getE();
+    pfaaiImpl.generateTetramerTuples();
+    std::vector<ETriple<IdType>> E = pfaaiImpl.getE();
     std::vector<ETriple<IdType>> refE;
     {
-        std::ifstream tcx("data/xanthodb_sorted_e_array.bin", std::ios::binary);
+        std::ifstream tcx(REF_SRTD_E_ARRAY, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
         iarchive(refE);
     }
     //
-    pfaaiRunner.computeJAC();
-    std::vector<JACTuple<IdType, double>> JAC = pfaaiRunner.getJAC(), refJAC;
+    pfaaiImpl.computeJAC();
+    std::vector<JACTuple<IdType, double>> JAC = pfaaiImpl.getJAC(), refJAC;
     {
-        std::ifstream tcx("data/xanthodb_jac.bin", std::ios::binary);
+        std::ifstream tcx(REF_JAC_DATA, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
         iarchive(refJAC);
     }
-    REQUIRE(refJAC.size() == JAC.size());
-    for(auto i = 0; i < JAC.size(); i++)
-        REQUIRE(refJAC[i] == JAC[i]);
+    REQUIRE(refJAC == JAC);
+    // for(auto i = 0; i < JAC.size(); i++)
+    //    REQUIRE(refJAC[i] == JAC[i]);
     //
-    pfaaiRunner.computeAJI();
-    std::vector<double> AJI = pfaaiRunner.getAJI(), refAJI;
+    pfaaiImpl.computeAJI();
+    std::vector<double> AJI = pfaaiImpl.getAJI(), refAJI;
     {
-        std::ifstream tcx("data/xanthodb_aji.bin", std::ios::binary);
+        std::ifstream tcx(REF_AJI_DATA, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
         iarchive(refAJI);
     }
-    for(auto i = 0; i < refAJI.size(); i++)
-        REQUIRE(refAJI[i] == AJI[i]);
+    REQUIRE(refAJI == AJI);
+    // for(auto i = 0; i < refAJI.size(); i++)
+    //    REQUIRE(refAJI[i] == AJI[i]);
 }
