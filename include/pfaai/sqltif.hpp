@@ -2,8 +2,10 @@
 #define SQLITE_INTERFACE_HPP
 
 #include "pfaai/interface.hpp"
+#include <cstddef>
 #include <fmt/format.h>
 #include <iostream>
+#include <iterator>
 #include <sqlite3.h>
 #include <sstream>
 #include <string>
@@ -31,13 +33,15 @@ struct DatabaseNames {
 
 template <typename IdType, typename IdPairType, typename IdMatType,
           typename DBNameType>
-class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> {
+class SQLiteInterface
+    : public DataBaseInterface<IdType, IdPairType, IdMatType> {
     std::string m_pathToDb;
     sqlite3* m_sqltDbPtr;
     int m_dbErrorCode;
     DBNameType m_dbNames;
 
   public:
+    using ParentT = DataBaseInterface<IdType, IdPairType, IdMatType>;
     explicit SQLiteInterface(const std::string dbPath,
                              DBNameType dbn = DBNameType())
         : m_pathToDb(dbPath), m_sqltDbPtr(initDB(dbPath, &m_dbErrorCode)),
@@ -70,19 +74,16 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
 
     PFAAI_ERROR_CODE validate() const {
         if (!isDBOpen()) {
-            std::cerr << "Error in opening " << getDBPath()
-                      << std::endl;
-            std::cerr << "DB ERROR: " << getDBError()
-                      << std::endl;
+            std::cerr << "Error in opening " << getDBPath() << std::endl;
+            std::cerr << "DB ERROR: " << getDBError() << std::endl;
 
-            if(getDBError())
+            if (getDBError())
                 return PFAAI_ERR_SQLITE_MEM_ALLOC;
             else
                 return PFAAI_ERR_SQLITE_DB;
         }
         return PFAAI_OK;
     }
-
 
     virtual ~SQLiteInterface() {
         if (m_dbErrorCode == SQLITE_OK && m_sqltDbPtr != nullptr) {
@@ -97,7 +98,8 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
     }
 
     int queryGenomeTetramers(const std::string protein, IdType tetramerStart,
-                             IdType tetramerEnd, std::vector<IdType>& Lc) const { // NOLINT
+                             IdType tetramerEnd,
+                             std::vector<IdType>& Lc) const {  // NOLINT
         const std::string genomeTetramerQueryFmt =
             "SELECT {}, {} FROM `{}{}` WHERE {} BETWEEN ? AND ?";
 
@@ -131,10 +133,9 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
         return errorCode;
     }
 
-    int queryProtienSetGPPairs(const std::vector<std::string>& proteinSet,
+    int queryProteinSetGPPairs(const std::vector<std::string>& proteinSet,
                                IdType tetramerStart, IdType tetramerEnd,
-                               std::vector<IdType>& Lp,  // NOLINT
-                               std::vector<IdPairType>& F) const { //NOLINT
+                               typename ParentT::PIterT iterF) const {
         std::ostringstream oss;
         const std::string proteinSetTetramersQueryFmt =
             "SELECT {}, {}, {} as source_table FROM `{}{}` WHERE {} BETWEEN "
@@ -163,8 +164,6 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
             std::cerr << "SQL Error: " << sqlite3_errmsg(m_sqltDbPtr);
             return errorCode;
         } else {
-            // Starting location in F
-            IdType indexInF = Lp[tetramerStart];
             while (sqlite3_step(statement) == SQLITE_ROW) {
                 const int tetraID = sqlite3_column_int(statement, 0);
                 const void* genomeBlob = sqlite3_column_blob(statement, 1);
@@ -176,8 +175,8 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
 
                 for (int i = 0; i < countGenomes; i++) {
                     int genomeID = genomeArray[i];
-                    F[indexInF] = IdPairType(proteinIndex, genomeID);
-                    indexInF++;
+                    *iterF =  IdPairType(proteinIndex, genomeID);
+                    iterF++;
                 }
             }
         }
@@ -186,9 +185,9 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
         return SQLITE_OK;
     }
 
-    int queryProtienTetramerCounts(const std::vector<std::string>& proteinSet,
+    int queryProteinTetramerCounts(const std::vector<std::string>& proteinSet,
                                    IdType proteinStart, IdType proteinEnd,
-                                   IdMatType& T) const { // NOLINT
+                                   IdMatType& T) const {  // NOLINT
         std::ostringstream oss;
         const std::string proteinSetTetramerCtQueryFmt =
             "SELECT {}, length({}), {} as source_table from `{}{}` ";
@@ -228,9 +227,7 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
         return SQLITE_OK;
     }
 
-    int queryMetaData(std::vector<std::string>& proteinSet, // NOLINT
-                      std::vector<std::string>& genomeSet) const { //NOLINT
-
+    int queryGenomeSet(std::vector<std::string>& genomeSet) const {  // NOLINT
         const std::string countQueryFmt =
             "SELECT count(*) as count_genome FROM {}";
         // std::string sqlQuery =
@@ -251,6 +248,8 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
             int nGenomes = sqlite3_column_int(statement, 0);
             genomeSet.resize(nGenomes);
         }
+        sqlite3_finalize(statement);
+        statement = NULL;
 
         const std::string genomeQueryFmt = "SELECT {} FROM {}";
         sqlQuery = fmt::format(genomeQueryFmt, m_dbNames.GMTTAB_COLUMN_GNAME,
@@ -273,13 +272,18 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
             index++;
         }
 
+        return SQLITE_OK;
+    }
+
+    int queryProteinSet(std::vector<std::string>& proteinSet) const {  // NOLINT
+        sqlite3_stmt* statement;
         const std::string protCountQueryFmt =
             "SELECT count(DISTINCT {}) FROM {}";
         // sqlQuery = "SELECT count(*) from " + _dbNames.SCPDTAB;
-        sqlQuery = fmt::format(protCountQueryFmt, m_dbNames.SCPDTAB_COLUMN_ACC,
-                               m_dbNames.SCPDTAB);
-        errorCode = sqlite3_prepare_v2(m_sqltDbPtr, sqlQuery.c_str(), -1,
-                                       &statement, nullptr);
+        std::string sqlQuery = fmt::format(
+            protCountQueryFmt, m_dbNames.SCPDTAB_COLUMN_ACC, m_dbNames.SCPDTAB);
+        int errorCode = sqlite3_prepare_v2(m_sqltDbPtr, sqlQuery.c_str(), -1,
+                                           &statement, nullptr);
 
         if (errorCode != SQLITE_OK) {
             std::cerr << "Error in preparing sql statement " << sqlQuery
@@ -292,6 +296,8 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
             int scpCount = sqlite3_column_int(statement, 0);
             proteinSet.resize(scpCount);
         }
+        sqlite3_finalize(statement);
+        statement = NULL;
 
         const std::string protQueryFmt = "SELECT DISTINCT {} FROM {}";
         // sqlQuery = "SELECT scp_acc from " + _dbNames.SCPDTAB;
@@ -306,7 +312,7 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
             return errorCode;
         }
 
-        index = 0;
+        int index = 0;
         while (sqlite3_step(statement) == SQLITE_ROW) {
             const unsigned char* scp_acc = sqlite3_column_text(statement, 0);
             std::string proteinName(reinterpret_cast<const char*>(scp_acc));
@@ -314,7 +320,18 @@ class SQLiteInterface : public DataBaseInterface<IdType, IdPairType, IdMatType> 
             index++;
         }
 
+        sqlite3_finalize(statement);
         return SQLITE_OK;
+    }
+
+    int queryMetaData(std::vector<std::string>& proteinSet,         // NOLINT
+                      std::vector<std::string>& genomeSet) const {  // NOLINT
+        int errCode = queryProteinSet(proteinSet);
+        if (errCode == SQLITE_OK) {
+            return queryGenomeSet(genomeSet);
+        } else {
+            return errCode;
+        }
     }
 };
 

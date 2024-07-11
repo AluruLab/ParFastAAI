@@ -2,8 +2,8 @@
 #include "pfaai_tests.hpp"  // NOLINT
 #include "catch2/catch_test_macros.hpp"
 #include "pfaai/data.hpp"
-#include "pfaai/sqltif.hpp"
 #include "pfaai/impl.hpp"
+#include "pfaai/sqltif.hpp"
 #include <catch2/catch_all.hpp>
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/vector.hpp>
@@ -11,19 +11,20 @@
 
 using IdType = int;
 using ValueType = double;
-using IdPairType = IDPair<IdType, IdType>;
+using IdPairType = DPair<IdType, IdType>;
 using IdMatType = DMatrix<IdType>;
-using SQLTIfType = SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames>;
+using SQLTIfType =
+    SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames>;
 using PFImplT = ParFAAIImpl<IdType, IdPairType, IdMatType, ValueType>;
 using PFDataT = ParFAAIData<IdType, IdPairType, IdMatType, PFImplT::JACType>;
 
 static constexpr char G_DB_PATH[] = "data/modified_xantho_fastaai2.db";
 static constexpr IdType G_NTETRAMERS = (20 * 20 * 20 * 20);
 static constexpr IdType G_GENOMESET_SIZE = 20;
-static constexpr IdType G_PROTIENSET_SIZE = 80;
-static const std::vector<std::string> G_PROTIENSET = TESTDB_PROTEIN_SET;
+static constexpr IdType G_PROTEINSET_SIZE = 80;
+static const std::vector<std::string> G_PROTEINSET = TESTDB_PROTEIN_SET;
 static const std::vector<std::string> G_GENOMESET = TESTDB_GENOME_SET;
-// Testing of genomes query for protien
+// Testing of genomes query for protein
 static const std::vector<std::vector<IdType>> G_QRY_PST_TETRA_CTS = {
     {260, 260, 260, 260, 260, 260, 260, 260, 260, 260,
      260, 260, 260, 260, 260, 260, 260, 263, 263, 263},
@@ -48,10 +49,10 @@ static constexpr char REF_AJI_DATA[] = "data/xanthodb_aji.bin";
 
 TEST_CASE("Query Genome Metadata", "[meta data test]") {
     SQLTIfType sqlt_if(G_DB_PATH);
-    std::vector<std::string> protienSet, genomeSet;
+    std::vector<std::string> proteinSet, genomeSet;
     IdType nGenomes;
-    sqlt_if.queryMetaData(protienSet, genomeSet);
-    REQUIRE(G_PROTIENSET == protienSet);
+    sqlt_if.queryMetaData(proteinSet, genomeSet);
+    REQUIRE(G_PROTEINSET == proteinSet);
     REQUIRE(G_GENOMESET == genomeSet);
 }
 
@@ -65,18 +66,22 @@ TEST_CASE("Query No. of Tetramers", "[ntetramers query test]") {
     REQUIRE(Lc[2144] == 17);
 }
 
-TEST_CASE("Query Protien Tetramer Counts", "[prot teteramer counts]") {
+TEST_CASE("Query Protein Tetramer Counts", "[prot teteramer counts]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0), Lp(G_NTETRAMERS, 0);
-    IdMatType T(G_PROTIENSET_SIZE, G_GENOMESET_SIZE);
+    IdMatType T(G_PROTEINSET_SIZE, G_GENOMESET_SIZE);
     SQLTIfType sqlt_if(G_DB_PATH);
-    sqlt_if.queryProtienTetramerCounts(G_PROTIENSET, 0, 3, T);
-    REQUIRE(G_QRY_PST_TETRA_CTS[0] == T.row(0));
-    REQUIRE(G_QRY_PST_TETRA_CTS[1] == T.row(1));
-    REQUIRE(G_QRY_PST_TETRA_CTS[2] == T.row(2));
-    REQUIRE(G_QRY_PST_TETRA_CTS[3] == T.row(3));
+    sqlt_if.queryProteinTetramerCounts(G_PROTEINSET, 0, 3, T);
+    REQUIRE(G_QRY_PST_TETRA_CTS[0] ==
+            std::vector<IdType>(T.row_begin(0), T.row_end(0)));
+    REQUIRE(G_QRY_PST_TETRA_CTS[1] ==
+            std::vector<IdType>(T.row_begin(1), T.row_end(1)));
+    REQUIRE(G_QRY_PST_TETRA_CTS[2] ==
+            std::vector<IdType>(T.row_begin(2), T.row_end(2)));
+    REQUIRE(G_QRY_PST_TETRA_CTS[3] ==
+            std::vector<IdType>(T.row_begin(3), T.row_end(3)));
 }
 
-TEST_CASE("Query Protien Set Tetramers", "[prot set teteramers]") {
+TEST_CASE("Query Protein Set Tetramers", "[prot set teteramers]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0), Lp(G_NTETRAMERS, 0);
     for (auto& rx : G_QRT_PST_GP_PAIRS) {
         Lc[rx[0]] += rx[1] / sizeof(IdType);
@@ -91,12 +96,12 @@ TEST_CASE("Query Protien Set Tetramers", "[prot set teteramers]") {
         cumulativeSum += Lc[i];
     }
 
-    std::vector<IdPairType> F(Lp[G_NTETRAMERS - 1] + Lc[G_NTETRAMERS - 1],
-                              IdPairType(-1, -1));
-    SQLTIfType sqlt_if(G_DB_PATH);
-    int rc = sqlt_if.queryProtienSetGPPairs(G_PROTIENSET, 2000, 3000, Lp, F);
-    REQUIRE(rc == SQLITE_OK);
     REQUIRE(Lp[2000] == 0);
+    std::vector<IdPairType> F(Lp.back() + Lc.back(), IdPairType(-1, -1));
+    SQLTIfType sqlt_if(G_DB_PATH);
+    int rc =
+        sqlt_if.queryProteinSetGPPairs(G_PROTEINSET, 2000, 3000, F.begin());
+    REQUIRE(rc == SQLITE_OK);
     REQUIRE(F[Lp[2000]] == IdPairType(5, 0));
     REQUIRE(F[Lp[2415] - 1] == IdPairType(35, 0x13));
     REQUIRE(F[Lp[2415]] == IdPairType(74, 0x11));
@@ -114,14 +119,14 @@ TEST_CASE("Test Data Structures Construction", "[construct Lc Lp F T]") {
     std::vector<IdType> Lc = pfaaiData.getLc();
     std::vector<IdType> Lp = pfaaiData.getLp();
     std::vector<IdType> refLc, refLp;
-    { 
+    {
         std::ifstream lcx(REF_LC_ARRAY, std::ios::binary);
-        cereal::BinaryInputArchive iarchive(lcx); 
+        cereal::BinaryInputArchive iarchive(lcx);
         iarchive(refLc);
     }
     {
         std::ifstream lcx(REF_LP_ARRAY, std::ios::binary);
-        cereal::BinaryInputArchive iarchive(lcx); 
+        cereal::BinaryInputArchive iarchive(lcx);
         iarchive(refLp);
     }
     REQUIRE(refLc == Lc);
@@ -139,7 +144,7 @@ TEST_CASE("Test Data Structures Construction", "[construct Lc Lp F T]") {
     //
     pfaaiData.constructT();
     IdMatType T = pfaaiData.getT();
-    IdMatType refT(G_PROTIENSET_SIZE, G_GENOMESET_SIZE);
+    IdMatType refT(G_PROTEINSET_SIZE, G_GENOMESET_SIZE);
     {
         std::ifstream tcx(REF_T_MATRIX, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);

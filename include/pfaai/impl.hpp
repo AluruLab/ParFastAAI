@@ -501,8 +501,8 @@ class ParFAAIImpl {
                     int BkLength = blockBkEnd - blockBkStart;
                     double J_Pi_Ga_Gb =
                         static_cast<double>(BkLength) /
-                        static_cast<double>(c_T.at(currProteinID, currGenomeA) +
-                                            c_T.at(currProteinID, currGenomeB) -
+                        static_cast<double>(c_T(currProteinID, currGenomeA) +
+                                            c_T(currProteinID, currGenomeB) -
                                             BkLength);
                     S += J_Pi_Ga_Gb;
                     N += 1;
@@ -515,8 +515,8 @@ class ParFAAIImpl {
                     int BkLength = blockBkEnd - blockBkStart;
                     double J_Pi_Ga_Gb =
                         static_cast<double>(BkLength) /
-                        static_cast<double>(c_T.at(currProteinID, currGenomeA) +
-                                            c_T.at(currProteinID, currGenomeB) -
+                        static_cast<double>(c_T(currProteinID, currGenomeA) +
+                                            c_T(currProteinID, currGenomeB) -
                                             BkLength);
                     S += J_Pi_Ga_Gb;
                     N += 1;

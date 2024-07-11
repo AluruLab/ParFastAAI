@@ -15,7 +15,7 @@
 
 using IdType = int;
 using ValueType = double;
-using IdPairType = IDPair<IdType, IdType>;
+using IdPairType = DPair<IdType, IdType>;
 using IdMatrixType = DMatrix<IdType>;
 using SQLiteIfT =
     SQLiteInterface<IdType, IdPairType, IdMatrixType, DatabaseNames>;
