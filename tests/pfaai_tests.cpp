@@ -13,8 +13,7 @@ using IdType = int;
 using ValueType = double;
 using IdPairType = DPair<IdType, IdType>;
 using IdMatType = DMatrix<IdType>;
-using SQLTIfType =
-    SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames>;
+using SQLiteIfT = SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames>;
 using PFImplT = ParFAAIImpl<IdType, IdPairType, IdMatType, ValueType>;
 using PFDataT = ParFAAIData<IdType, IdPairType, IdMatType, PFImplT::JACType>;
 
@@ -48,18 +47,17 @@ static constexpr char REF_JAC_DATA[] = "data/xanthodb_jac.bin";
 static constexpr char REF_AJI_DATA[] = "data/xanthodb_aji.bin";
 
 TEST_CASE("Query Genome Metadata", "[meta data test]") {
-    SQLTIfType sqlt_if(G_DB_PATH);
-    std::vector<std::string> proteinSet, genomeSet;
-    IdType nGenomes;
-    sqlt_if.queryMetaData(proteinSet, genomeSet);
-    REQUIRE(G_PROTEINSET == proteinSet);
-    REQUIRE(G_GENOMESET == genomeSet);
+    SQLiteIfT sqlt_if(G_DB_PATH);
+    DBMetaData dbMeta;
+    sqlt_if.queryMetaData(dbMeta);
+    REQUIRE(G_PROTEINSET == dbMeta.proteinSet);
+    REQUIRE(G_GENOMESET == dbMeta.genomeSet);
 }
 
 TEST_CASE("Query No. of Tetramers", "[ntetramers query test]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0);
-    SQLTIfType sqlt_if(G_DB_PATH);
-    sqlt_if.queryGenomeTetramers("PF00119.20", 2060, 2144, Lc);
+    SQLiteIfT sqlt_if(G_DB_PATH);
+    sqlt_if.queryTetramerOccCounts("PF00119.20", 2060, 2144, Lc);
     REQUIRE(Lc[2060] == 20);
     REQUIRE(Lc[2100] == 20);
     REQUIRE(Lc[2140] == 3);
@@ -69,7 +67,7 @@ TEST_CASE("Query No. of Tetramers", "[ntetramers query test]") {
 TEST_CASE("Query Protein Tetramer Counts", "[prot teteramer counts]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0), Lp(G_NTETRAMERS, 0);
     IdMatType T(G_PROTEINSET_SIZE, G_GENOMESET_SIZE);
-    SQLTIfType sqlt_if(G_DB_PATH);
+    SQLiteIfT sqlt_if(G_DB_PATH);
     sqlt_if.queryProteinTetramerCounts(G_PROTEINSET, 0, 3, T);
     REQUIRE(G_QRY_PST_TETRA_CTS[0] ==
             std::vector<IdType>(T.row_begin(0), T.row_end(0)));
@@ -90,7 +88,7 @@ TEST_CASE("Query Protein Set Tetramers", "[prot set teteramers]") {
     // Parallel prefix sum on Lc to construct Lp
     int cumulativeSum = 0;
 #pragma omp parallel for simd reduction(inscan, + : cumulativeSum)
-    for (int i = 0; i < Lc.size(); i++) {
+    for (std::size_t i = 0; i < Lc.size(); i++) {
         Lp[i] = cumulativeSum;
 #pragma omp scan exclusive(cumulativeSum)
         cumulativeSum += Lc[i];
@@ -98,7 +96,7 @@ TEST_CASE("Query Protein Set Tetramers", "[prot set teteramers]") {
 
     REQUIRE(Lp[2000] == 0);
     std::vector<IdPairType> F(Lp.back() + Lc.back(), IdPairType(-1, -1));
-    SQLTIfType sqlt_if(G_DB_PATH);
+    SQLiteIfT sqlt_if(G_DB_PATH);
     int rc =
         sqlt_if.queryProteinSetGPPairs(G_PROTEINSET, 2000, 3000, F.begin());
     REQUIRE(rc == SQLITE_OK);
@@ -110,11 +108,10 @@ TEST_CASE("Query Protein Set Tetramers", "[prot set teteramers]") {
 TEST_CASE("Test Data Structures Construction", "[construct Lc Lp F T]") {
     SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames> sqlt_if(
         G_DB_PATH);
-    std::vector<std::string> proteinSet;
-    std::vector<std::string> genomeSet;
-    sqlt_if.queryMetaData(proteinSet, genomeSet);
+    DBMetaData dbMeta;
+    sqlt_if.queryMetaData(dbMeta);
     //
-    PFDataT pfaaiData(sqlt_if, proteinSet, genomeSet);
+    PFDataT pfaaiData(sqlt_if, dbMeta);
     pfaaiData.constructLcandLp();
     std::vector<IdType> Lc = pfaaiData.getLc();
     std::vector<IdType> Lp = pfaaiData.getLp();
@@ -156,11 +153,10 @@ TEST_CASE("Test Data Structures Construction", "[construct Lc Lp F T]") {
 TEST_CASE("Test Impl ouputs", "[construct E JAC and AJI]") {
     SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames> sqlt_if(
         G_DB_PATH);
-    std::vector<std::string> proteinSet;
-    std::vector<std::string> genomeSet;
-    sqlt_if.queryMetaData(proteinSet, genomeSet);
+    DBMetaData dbMeta;
+    sqlt_if.queryMetaData(dbMeta);
     //
-    PFDataT pfaaiData(sqlt_if, proteinSet, genomeSet);
+    PFDataT pfaaiData(sqlt_if, dbMeta);
     pfaaiData.construct();
     //
     ParFAAIImpl<IdType, IdPairType, IdMatType, double> pfaaiImpl(pfaaiData);

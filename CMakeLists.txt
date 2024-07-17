@@ -10,6 +10,29 @@ set(BUILD_SHARED_LIBS ON)
 
 # option to build test
 option(BUILD_TESTING "Build tests" ON) # build tests
+#
+# Requires at least C++14
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Initialize CXXFLAGS and CFLAGS.
+set(BASE_OPT_FLAGS "-ffast-math -funroll-loops")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-maybe-uninitialized -fPIC")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${BASE_OPT_FLAGS}")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} ${BASE_OPT_FLAGS}")
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wno-maybe-uninitialized -fPIC")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${BASE_OPT_FLAGS}")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} ${BASE_OPT_FLAGS}")
+
+# Specify default build type
+IF(NOT CMAKE_BUILD_TYPE)
+  SET(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING
+      "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel."
+      FORCE)
+ENDIF(NOT CMAKE_BUILD_TYPE)
 
 set(SQLITE_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/sqlite")
 set(FMT_SRC_DIR "${PROJECT_SOURCE_DIR}/ext/fmt")
@@ -26,7 +49,7 @@ include_directories("${PROJECT_SOURCE_DIR}/include/")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 message(STATUS "MODULE PATH   ${CMAKE_MODULE_PATH}")
 
-# External headers for sqlite
+# External headers for sqlite, fmt, cereal and CLI11
 add_library(sqlite INTERFACE)
 target_include_directories(sqlite INTERFACE ${SQLITE_SRC_DIR})
 add_library(fmt INTERFACE)
@@ -40,8 +63,6 @@ target_include_directories(cli11 INTERFACE ${CLI11_SRC_DIR}/include)
 find_package(OpenMP REQUIRED)
 if(OpenMP_CXX_FOUND)
   message(STATUS "OpenMP version:  ${OpenMP_CXX_VERSION}")
-else()
-  message(STATUS "OpenMP NOT FOUND!")
 endif()
 
 # Compile

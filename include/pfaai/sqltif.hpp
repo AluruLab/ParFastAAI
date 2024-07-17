@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <fmt/format.h>
 #include <iostream>
-#include <iterator>
 #include <sqlite3.h>
 #include <sstream>
 #include <string>
@@ -97,9 +96,9 @@ class SQLiteInterface
         return db;
     }
 
-    int queryGenomeTetramers(const std::string protein, IdType tetramerStart,
-                             IdType tetramerEnd,
-                             std::vector<IdType>& Lc) const {  // NOLINT
+    int queryTetramerOccCounts(const std::string protein, IdType tetramerStart,
+                               IdType tetramerEnd,
+                               std::vector<IdType>& Lc) const {  // NOLINT
         const std::string genomeTetramerQueryFmt =
             "SELECT {}, {} FROM `{}{}` WHERE {} BETWEEN ? AND ?";
 
@@ -135,12 +134,12 @@ class SQLiteInterface
 
     int queryProteinSetGPPairs(const std::vector<std::string>& proteinSet,
                                IdType tetramerStart, IdType tetramerEnd,
-                               typename ParentT::PIterT iterF) const {
+                               typename ParentT::PairIterT iterF) const {
         std::ostringstream oss;
         const std::string proteinSetTetramersQueryFmt =
             "SELECT {}, {}, {} as source_table FROM `{}{}` WHERE {} BETWEEN "
             "{} and {} ";
-        for (int pIndex = 0; pIndex < proteinSet.size(); pIndex++) {
+        for (std::size_t pIndex = 0; pIndex < proteinSet.size(); pIndex++) {
             const std::string protein = proteinSet[pIndex];
             oss << fmt::format(
                 proteinSetTetramersQueryFmt, m_dbNames.TMTAB_COLUMN_TT,
@@ -165,7 +164,8 @@ class SQLiteInterface
             return errorCode;
         } else {
             while (sqlite3_step(statement) == SQLITE_ROW) {
-                const int tetraID = sqlite3_column_int(statement, 0);
+                //const int tetraID = 
+                sqlite3_column_int(statement, 0);
                 const void* genomeBlob = sqlite3_column_blob(statement, 1);
                 const IdType proteinIndex = sqlite3_column_int(statement, 2);
 
@@ -175,7 +175,7 @@ class SQLiteInterface
 
                 for (int i = 0; i < countGenomes; i++) {
                     int genomeID = genomeArray[i];
-                    *iterF =  IdPairType(proteinIndex, genomeID);
+                    *iterF = IdPairType(proteinIndex, genomeID);
                     iterF++;
                 }
             }
@@ -193,7 +193,7 @@ class SQLiteInterface
             "SELECT {}, length({}), {} as source_table from `{}{}` ";
         for (int proteinIndex = proteinStart; proteinIndex <= proteinEnd;
              proteinIndex++) {
-            std::string protein = proteinSet[proteinIndex];
+            const std::string& protein = proteinSet[proteinIndex];
             oss << fmt::format(proteinSetTetramerCtQueryFmt,
                                m_dbNames.GNMTAB_COLUMN_GID,
                                m_dbNames.GNMTAB_COLUMN_TMS, proteinIndex,
@@ -324,11 +324,10 @@ class SQLiteInterface
         return SQLITE_OK;
     }
 
-    int queryMetaData(std::vector<std::string>& proteinSet,         // NOLINT
-                      std::vector<std::string>& genomeSet) const {  // NOLINT
-        int errCode = queryProteinSet(proteinSet);
+    int queryMetaData(DBMetaData& dbMeta) const {  // NOLINT
+        int errCode = queryProteinSet(dbMeta.proteinSet);
         if (errCode == SQLITE_OK) {
-            return queryGenomeSet(genomeSet);
+            return queryGenomeSet(dbMeta.genomeSet);
         } else {
             return errCode;
         }

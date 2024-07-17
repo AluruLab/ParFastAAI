@@ -9,6 +9,7 @@ main.exe
 par_faai.exe
 build/
 build.release/
+build.default/
 bkup.txt
 bkup2.txt
 ext/fmt-10.2.1.zip

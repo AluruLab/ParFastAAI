@@ -91,6 +91,7 @@ class ParFAAIImpl {
     using JACType = JACTuple<IdType, ValueType>;
     using DSType =
         DataStructInterface<IdType, IdPairType, IdMatrixType, JACType>;
+    using IdTripleT = ETriple<IdType>;
 
   private:
     // Data references
@@ -106,7 +107,7 @@ class ParFAAIImpl {
 
     // tetramer tuples : Array E construction : Phase 2
     std::vector<IdType> m_tetramerStart, m_tetramerEnd;  // size nThreads
-    std::vector<ETriple<IdType>> m_E;
+    std::vector<IdTripleT> m_E;
     // thread distributions of E array ~(|E|/p)
     std::vector<IdType> m_threadEStarts, m_threadESize;  // size nThreads
 
@@ -132,7 +133,7 @@ class ParFAAIImpl {
           m_nTetramers(c_faaiDataRef.getTetramerCount()),
           m_nGenomePairs(c_faaiDataRef.getGPCount()) {}
 
-    const std::vector<ETriple<IdType>>& getE() const { return m_E; }
+    const std::vector<IdTripleT>& getE() const { return m_E; }
     const std::vector<JACTuple<IdType>>& getJAC() const { return m_JAC; }
     const std::vector<ValueType>& getAJI() const { return m_AJI; }
 
@@ -251,8 +252,8 @@ class ParFAAIImpl {
                         int genomeA_ID = c_F[i].second;
                         for (int j = i + 1; j < rightBoundary; j++) {
                             IdType genomeB_ID = c_F[j].second;
-                            ETriple newElement(currProteinID, genomeA_ID,
-                                               genomeB_ID);
+                            IdTripleT newElement(currProteinID, genomeA_ID,
+                                                 genomeB_ID);
                             m_E[currentLocalEIndex] = newElement;
                             currentLocalEIndex++;
                         }
@@ -270,7 +271,7 @@ class ParFAAIImpl {
                 IdType genomeA_ID = c_F[i].second;
                 for (IdType j = i + 1; j < rightBoundary; j++) {
                     IdType genomeB_ID = c_F[j].second;
-                    ETriple newElement(currProteinID, genomeA_ID, genomeB_ID);
+                    IdTripleT newElement(currProteinID, genomeA_ID, genomeB_ID);
                     m_E[currentLocalEIndex] = newElement;
                     currentLocalEIndex++;
                 }
@@ -297,7 +298,7 @@ class ParFAAIImpl {
 #pragma omp barrier
             // Get total length of E
 #pragma omp for reduction(+ : totalESize)
-            for (int i = 0; i < m_threadESize.size(); i++) {
+            for (std::size_t i = 0; i < m_threadESize.size(); i++) {
                 totalESize += m_threadESize[i];
             }
 #pragma omp single
@@ -306,7 +307,7 @@ class ParFAAIImpl {
             // prefix sum (exclusive) on _ESize and store it in _EStartIndex
             int cumulativeSum = 0;
 #pragma omp simd reduction(inscan, + : cumulativeSum)
-            for (int i = 0; i < m_threadESize.size(); i++) {
+            for (std::size_t i = 0; i < m_threadESize.size(); i++) {
                 m_threadEStarts[i] = cumulativeSum;
 #pragma omp scan exclusive(cumulativeSum)
                 cumulativeSum += m_threadESize[i];
@@ -368,8 +369,8 @@ class ParFAAIImpl {
         // Edge case - First genome pair seen in the local E chunk. It might
         // not start here
         if (currentLocalEIndex > 0) {
-            ETriple firstElement = m_E[currentLocalEIndex];
-            ETriple lastElementPrevThread = m_E[currentLocalEIndex - 1];
+            IdTripleT firstElement = m_E[currentLocalEIndex];
+            IdTripleT lastElementPrevThread = m_E[currentLocalEIndex - 1];
             if (firstElement.genomeA != lastElementPrevThread.genomeA ||
                 firstElement.genomeB != lastElementPrevThread.genomeB) {
                 // Then this means we hold the beginning of this genome pair
@@ -385,7 +386,7 @@ class ParFAAIImpl {
             // currentLocalEIndex == 0
             // Safely write the beginning of the current genome pair index
             // into genomePairEStartIndex array
-            ETriple firstElement = m_E[currentLocalEIndex];
+            IdTripleT firstElement = m_E[currentLocalEIndex];
             IdType genomePairIndexInJAC = genomePairToJACIndex(
                 firstElement.genomeA, firstElement.genomeB);
             m_genomePairEStartIndex[genomePairIndexInJAC] = 0;
@@ -431,8 +432,8 @@ class ParFAAIImpl {
                 // the end of the current genome pair, leave it to the next
                 // processor to fill this information
 
-                if (currentLocalEIndex < m_E.size()) {
-                    ETriple firstElementOfNextThread = m_E[currentLocalEIndex];
+                if (currentLocalEIndex < static_cast<IdType>(m_E.size())) {
+                    IdTripleT firstElementOfNextThread = m_E[currentLocalEIndex];
 
                     if (firstElementOfNextThread.genomeA != currentGenomeA ||
                         firstElementOfNextThread.genomeB != currentGenomeB) {

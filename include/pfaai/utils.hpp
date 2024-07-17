@@ -54,8 +54,9 @@ inline void distribute_bags_of_tasks(int nproc, IT ntasks,
     int ntasks_per_proc = (static_cast<float>(ntasks) / nproc) * (1 + slack);
     proc_bag_start.resize(nproc, -1);
     proc_bag_end.resize(nproc, -1);
+    IT n_bags = IT(bag_sizes.size());
 
-    for (int bag_id = 0, pid = 0; bag_id < bag_sizes.size(); bag_id++) {
+    for (IT bag_id = 0, pid = 0; bag_id < n_bags; bag_id++) {
         IT ntasks_bag = bag_sizes[bag_id];
         if (ntasks_distr[pid] + ntasks_bag <= ntasks_per_proc ||
             pid == nproc - 1) {

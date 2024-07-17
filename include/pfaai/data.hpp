@@ -24,8 +24,15 @@ template <typename IdType, typename IdPairType, typename IdMatrixType,
 class ParFAAIData
     : public DataStructInterface<IdType, IdPairType, IdMatrixType, JACType> {
 
+  public:
+    using ParentT =
+        DataStructInterface<IdType, IdPairType, IdMatrixType, JACType>;
+    using DBIfxT = DataBaseInterface<IdType, IdPairType, IdMatrixType>;
+
+  private:
     // Inputs
-    const DataBaseInterface<IdType, IdPairType, IdMatrixType>& m_DBIf;
+    const DBIfxT& m_DBIf;
+    const DBMetaData& m_dbMeta;
     const std::vector<std::string>& m_proteinSet;
     const std::vector<std::string>& m_genomeSet;
     IdType m_nProteins, m_nGenomes;
@@ -40,19 +47,13 @@ class ParFAAIData
     bool m_flagInitL;
 
   public:
-    using ParentT =
-        DataStructInterface<IdType, IdPairType, IdMatrixType, JACType>;
-
-    explicit ParFAAIData(
-        const DataBaseInterface<IdType, IdPairType, IdMatrixType>& dbif,
-        const std::vector<std::string>& protSet,
-        const std::vector<std::string>& gnmSet,
-        float slack = ParentT::DEFAULT_SLACK_PCT)
-        : m_DBIf(dbif), m_proteinSet(protSet), m_genomeSet(gnmSet),
-          m_nProteins(m_proteinSet.size()), m_nGenomes(m_genomeSet.size()),
-          m_slack(slack), m_errorCode(PFAAI_OK), m_Lc(ParentT::NTETRAMERS, 0),
-          m_Lp(ParentT::NTETRAMERS, 0), m_T(m_nProteins, m_nGenomes),
-          m_flagInitL(false) {}
+    explicit ParFAAIData(const DBIfxT& dbif, const DBMetaData& dbMeta,
+                         float slack = ParentT::DEFAULT_SLACK_PCT)
+        : m_DBIf(dbif), m_dbMeta(dbMeta), m_proteinSet(dbMeta.proteinSet),
+          m_genomeSet(dbMeta.genomeSet), m_nProteins(m_proteinSet.size()),
+          m_nGenomes(m_genomeSet.size()), m_slack(slack), m_errorCode(PFAAI_OK),
+          m_Lc(ParentT::NTETRAMERS, 0), m_Lp(ParentT::NTETRAMERS, 0),
+          m_T(m_nProteins, m_nGenomes), m_flagInitL(false) {}
 
     inline const std::vector<IdType>& getLc() const { return m_Lc; }
     inline const std::vector<IdType>& getLp() const { return m_Lp; }
@@ -84,7 +85,7 @@ class ParFAAIData
     void initJAC(std::vector<JACType>& jac_tuples) const {  //  NOLINT
         jac_tuples.resize(getGPCount());
         IdType gA = 0, gB = 1;
-        for (int i = 0; i < jac_tuples.size(); i++) {
+        for(std::size_t i = 0; i < jac_tuples.size(); i++) {
             jac_tuples[i].genomeA = gA;
             jac_tuples[i].genomeB = gB;
 

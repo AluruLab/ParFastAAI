@@ -80,11 +80,11 @@ template <typename DT> class DMatrix {
                 m_data == other.m_data);
     }
     //
-    typename std::vector<DT>::iterator row_begin(std::size_t i){
+    typename std::vector<DT>::iterator row_begin(std::size_t i) {
         return m_data.begin() + i * m_ncols;
     }
-    typename std::vector<DT>::iterator row_end(std::size_t i){
-            return m_data.begin() + (i + 1) * m_ncols;
+    typename std::vector<DT>::iterator row_end(std::size_t i) {
+        return m_data.begin() + (i + 1) * m_ncols;
     }
     std::size_t rows() const { return m_nrows; }
     std::size_t cols() const { return m_ncols; }
@@ -103,12 +103,17 @@ std::ostream& operator<<(std::ostream& ox, DMatrix<IT> const& cx) {
     return ox;
 }
 
+struct DBMetaData {
+    std::vector<std::string> proteinSet;
+    std::vector<std::string> genomeSet;
+};
+
 template <typename IdType, typename IdPairType, typename IdMatType,
           typename ErrCodeType = int>
 class DataBaseInterface {
 
   public:
-    using PIterT = typename std::vector<IdPairType>::iterator;
+    using PairIterT = typename std::vector<IdPairType>::iterator;
     //
     DataBaseInterface() {}
     //
@@ -120,19 +125,14 @@ class DataBaseInterface {
     virtual inline int closeDB() = 0;
     //
     virtual int
-    queryGenomeTetramers(const std::string protein, IdType tetramerStart,
-                         IdType tetramerEnd,
-                         std::vector<IdType>& Lc) const = 0;  // NOLINT
+    queryTetramerOccCounts(const std::string protein, IdType tetramerStart,
+                           IdType tetramerEnd,
+                           std::vector<IdType>& Lc) const = 0;  // NOLINT
     virtual int
     queryProteinSetGPPairs(const std::vector<std::string>& proteinSet,
                            IdType tetramerStart, IdType tetramerEnd,
-
-                           PIterT     iterF) const = 0;
-                           //const std::vector<IdType>& Lp,
-                           //std::vector<IdPairType>& F) const = 0;  // NOLINT
-    virtual int
-    queryMetaData(std::vector<std::string>& proteinSet,            // NOLINT
-                  std::vector<std::string>& genomeSet) const = 0;  // NOLINT
+                           PairIterT iterF) const = 0;
+    virtual int queryMetaData(DBMetaData& metaData) const = 0;  // NOLINT
 
     virtual int
     queryGenomeSet(std::vector<std::string>& genomeSet) const = 0;  // NOLINT
@@ -225,8 +225,8 @@ class DataStructInterface {
 #pragma omp single
             { errorCodes.resize(nThreads, 0); }
 
-            for (const std::string protein : proteinSet) {
-                int qryErrCode = inDBIf.queryGenomeTetramers(
+            for (const std::string& protein : proteinSet) {
+                int qryErrCode = inDBIf.queryTetramerOccCounts(
                     protein, tetraStart, tetraEnd, Lc);
                 if (qryErrCode != SQLITE_OK) {
                     errorCodes[threadID] = qryErrCode;
@@ -244,7 +244,7 @@ class DataStructInterface {
         // Parallel prefix sum on Lc to construct Lp
         IdType cumulativeSum = 0;
 #pragma omp parallel for simd reduction(inscan, + : cumulativeSum)
-        for (int i = 0; i < Lc.size(); i++) {
+        for (std::size_t i = 0; i < Lc.size(); i++) {
             Lp[i] = cumulativeSum;
 #pragma omp scan exclusive(cumulativeSum)
             cumulativeSum += Lc[i];
