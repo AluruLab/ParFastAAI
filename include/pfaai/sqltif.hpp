@@ -134,7 +134,8 @@ class SQLiteInterface
 
     int queryProteinSetGPPairs(const std::vector<std::string>& proteinSet,
                                IdType tetramerStart, IdType tetramerEnd,
-                               typename ParentT::PairIterT iterF) const {
+                               typename ParentT::PairIterT iterF,
+                               IdType* fCount) const {
         std::ostringstream oss;
         const std::string proteinSetTetramersQueryFmt =
             "SELECT {}, {}, {} as source_table FROM `{}{}` WHERE {} BETWEEN "
@@ -176,6 +177,7 @@ class SQLiteInterface
                 for (int i = 0; i < countGenomes; i++) {
                     int genomeID = genomeArray[i];
                     *iterF = IdPairType(proteinIndex, genomeID);
+                    (*fCount)++;
                     iterF++;
                 }
             }

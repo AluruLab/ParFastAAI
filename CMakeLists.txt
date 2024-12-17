@@ -11,8 +11,8 @@ set(BUILD_SHARED_LIBS ON)
 # option to build test
 option(BUILD_TESTING "Build tests" ON) # build tests
 #
-# Requires at least C++14
-set(CMAKE_CXX_STANDARD 14)
+# Requires at least C++17
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Initialize CXXFLAGS and CFLAGS.

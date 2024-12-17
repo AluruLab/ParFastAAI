@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <fmt/format.h>
 #include <omp.h>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -288,8 +289,11 @@ class ParFAAIImpl {
         {
             int nThreads = omp_get_num_threads();
             int threadID = omp_get_thread_num();
+            // Ask 1 thread to carry out the distribution of tasks, i.e.
 #pragma omp single
-            { distributeTetramers(nThreads); }
+            {
+                distributeTetramers(nThreads);
+            }
             // Tetramers specific to this thread
             int tStart = m_tetramerStart[threadID],
                 tEnd = m_tetramerEnd[threadID];
@@ -302,7 +306,9 @@ class ParFAAIImpl {
                 totalESize += m_threadESize[i];
             }
 #pragma omp single
-            { m_E.resize(totalESize); }
+            {
+                m_E.resize(totalESize);
+            }
             // Get the start indices of each thread-partions of E by parallel
             // prefix sum (exclusive) on _ESize and store it in _EStartIndex
             int cumulativeSum = 0;
@@ -321,7 +327,9 @@ class ParFAAIImpl {
         // Parallel Sort E TODO(): Sorting speed is inconsistent, why ?
         timer srt_timer;
 #pragma omp single
-        { parallelMergeSort(m_E, 0, m_E.size() - 1, 5); }
+        {
+            parallelMergeSort(m_E, 0, m_E.size() - 1, 5);
+        }
         srt_timer.elapsed();
         srt_timer.print_elapsed("E parallel sorting  : ", std::cout);
         return PFAAI_OK;
@@ -433,7 +441,8 @@ class ParFAAIImpl {
                 // processor to fill this information
 
                 if (currentLocalEIndex < static_cast<IdType>(m_E.size())) {
-                    IdTripleT firstElementOfNextThread = m_E[currentLocalEIndex];
+                    IdTripleT firstElementOfNextThread =
+                        m_E[currentLocalEIndex];
 
                     if (firstElementOfNextThread.genomeA != currentGenomeA ||
                         firstElementOfNextThread.genomeB != currentGenomeB) {
@@ -539,7 +548,9 @@ class ParFAAIImpl {
             int nThreads = omp_get_num_threads();
             int threadID = omp_get_thread_num();
 #pragma omp single
-            { prepJAC(nThreads); }
+            {
+                prepJAC(nThreads);
+            }
             // Chunks of JAC this thread is responsible for - INCLUSIVE bounds
             distributeGenomePairs(threadID, nThreads);
 #pragma omp barrier

@@ -6,6 +6,7 @@
 #include <fmt/format.h>
 #include <omp.h>
 #include <ostream>
+#include <iostream>
 #include <sqlite3.h>
 #include <string>
 #include <vector>
@@ -131,7 +132,7 @@ class DataBaseInterface {
     virtual int
     queryProteinSetGPPairs(const std::vector<std::string>& proteinSet,
                            IdType tetramerStart, IdType tetramerEnd,
-                           PairIterT iterF) const = 0;
+                           PairIterT iterF, IdType* fCount) const = 0;
     virtual int queryMetaData(DBMetaData& metaData) const = 0;  // NOLINT
 
     virtual int
@@ -151,13 +152,17 @@ class DataBaseInterface {
 template <typename IdType, typename IdPairType, typename IdMatrixType,
           typename JACType>
 class DataStructInterface {
+  protected:
+    // Error Codes
+    PFAAI_ERROR_CODE m_errorCode;
   public:
     // constants
     constexpr static IdType NTETRAMERS = (20 * 20 * 20 * 20);
     constexpr static float DEFAULT_SLACK_PCT = 0.0;
     //
-    DataStructInterface() {}
+    DataStructInterface() : m_errorCode(PFAAI_OK) {}
     //
+    // Getter functions
     virtual const std::vector<IdType>& getLc() const = 0;
     virtual const std::vector<IdType>& getLp() const = 0;
     virtual const IdMatrixType& getT() const = 0;
@@ -170,8 +175,70 @@ class DataStructInterface {
     virtual IdType genomePairToJACIndex(IdType genomeA,
                                         IdType genomeB) const = 0;
     virtual void initJAC(std::vector<JACType>& jac_tuples) const = 0;  // NOLINT
+    virtual PFAAI_ERROR_CODE constructT() = 0;
+    virtual PFAAI_ERROR_CODE constructLcandLp() = 0;
+    virtual PFAAI_ERROR_CODE constructF() = 0;
     //
     virtual ~DataStructInterface() {}
+    //
+    virtual PFAAI_ERROR_CODE construct() {
+        timer run_timer;
+        m_errorCode = constructLcandLp();
+        run_timer.elapsed();
+        run_timer.print_elapsed("Lc & Lp contruction : ", std::cout);
+        if (m_errorCode != PFAAI_OK) {
+            std::cerr << "Error in constructing Lc and Lp, error code : "
+                      << m_errorCode << std::endl;
+            return m_errorCode;
+        }
+        //
+        run_timer.reset();
+        m_errorCode = constructF();
+        run_timer.elapsed();
+        run_timer.print_elapsed("F contruction       : ", std::cout);
+        if (m_errorCode != PFAAI_OK) {
+            std::cerr << "Error in constructing F, error code : " << m_errorCode
+                      << std::endl;
+            return m_errorCode;
+        }
+        //
+        run_timer.reset();
+        m_errorCode = constructT();
+        run_timer.elapsed();
+        run_timer.print_elapsed("T construction      : ", std::cout);
+        if (m_errorCode != PFAAI_OK) {
+            std::cerr << "Error in constructing T, error code : " << m_errorCode
+                      << std::endl;
+            return m_errorCode;
+        }
+        return PFAAI_OK;
+    }
+
+    //
+
+    static void initJAC(IdType nGenomes, IdType nTuples,
+                        std::vector<JACType>& jac_tuples) {  //  NOLINT
+        jac_tuples.resize(nTuples);
+        IdType gA = 0, gB = 1;
+        for(std::size_t i = 0; i < jac_tuples.size(); i++) {
+            jac_tuples[i].genomeA = gA;
+            jac_tuples[i].genomeB = gB;
+
+            if (gB == nGenomes - 1) {
+                gA += 1;
+                gB = gA + 1;
+            } else {
+                gB += 1;
+            }
+        }
+    }
+ 
+
+    static inline IdType genomePairToJACIndex(IdType genomeCount, IdType genomeA,
+                                              IdType genomeB) {
+        return (genomeCount * genomeA) + genomeB -
+               static_cast<int>((genomeA + 2) * (genomeA + 1) / 2);
+    }
 
     static PFAAI_ERROR_CODE constructT(
         const std::vector<std::string>& proteinSet,

@@ -97,8 +97,9 @@ TEST_CASE("Query Protein Set Tetramers", "[prot set teteramers]") {
     REQUIRE(Lp[2000] == 0);
     std::vector<IdPairType> F(Lp.back() + Lc.back(), IdPairType(-1, -1));
     SQLiteIfT sqlt_if(G_DB_PATH);
+    int fct = 0;
     int rc =
-        sqlt_if.queryProteinSetGPPairs(G_PROTEINSET, 2000, 3000, F.begin());
+        sqlt_if.queryProteinSetGPPairs(G_PROTEINSET, 2000, 3000, F.begin(), &fct);
     REQUIRE(rc == SQLITE_OK);
     REQUIRE(F[Lp[2000]] == IdPairType(5, 0));
     REQUIRE(F[Lp[2415] - 1] == IdPairType(35, 0x13));

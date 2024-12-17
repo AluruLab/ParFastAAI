@@ -37,8 +37,6 @@ class ParFAAIData
     const std::vector<std::string>& m_genomeSet;
     IdType m_nProteins, m_nGenomes;
     float m_slack;
-    // Error Codes
-    PFAAI_ERROR_CODE m_errorCode;
     // Data structure
     std::vector<IdType> m_Lc;
     std::vector<IdType> m_Lp;
@@ -51,7 +49,7 @@ class ParFAAIData
                          float slack = ParentT::DEFAULT_SLACK_PCT)
         : m_DBIf(dbif), m_dbMeta(dbMeta), m_proteinSet(dbMeta.proteinSet),
           m_genomeSet(dbMeta.genomeSet), m_nProteins(m_proteinSet.size()),
-          m_nGenomes(m_genomeSet.size()), m_slack(slack), m_errorCode(PFAAI_OK),
+          m_nGenomes(m_genomeSet.size()), m_slack(slack), 
           m_Lc(ParentT::NTETRAMERS, 0), m_Lp(ParentT::NTETRAMERS, 0),
           m_T(m_nProteins, m_nGenomes), m_flagInitL(false) {}
 
@@ -66,44 +64,22 @@ class ParFAAIData
         return (m_nGenomes * (m_nGenomes - 1) / 2);
     }
 
-    ~ParFAAIData() {}
-
-  private:
-    inline IdType genomePairToJACIndex(IdType genomeCount, IdType genomeA,
-                                       IdType genomeB) const {
-        return (genomeCount * genomeA) + genomeB -
-               static_cast<int>((genomeA + 2) * (genomeA + 1) / 2);
-    }
-
-  public:
     inline IdType genomePairToJACIndex(IdType genomeA, IdType genomeB) const {
-        // (37/2) * a - a^2 / 2 + b - 1
-        // return (37 * genomeA - genomeA * genomeA) / 2 + genomeB - 1;
-        return genomePairToJACIndex(m_nGenomes, genomeA, genomeB);
+        return ParentT::genomePairToJACIndex(m_nGenomes, genomeA, genomeB);
     }
 
     void initJAC(std::vector<JACType>& jac_tuples) const {  //  NOLINT
-        jac_tuples.resize(getGPCount());
-        IdType gA = 0, gB = 1;
-        for(std::size_t i = 0; i < jac_tuples.size(); i++) {
-            jac_tuples[i].genomeA = gA;
-            jac_tuples[i].genomeB = gB;
-
-            if (gB == m_nGenomes - 1) {
-                gA += 1;
-                gB = gA + 1;
-            } else {
-                gB += 1;
-            }
-        }
+        ParentT::initJAC(m_nGenomes, getGPCount(), jac_tuples); 
     }
+    
+    ~ParFAAIData() {}
 
     PFAAI_ERROR_CODE constructLcandLp() {
-        m_errorCode = ParentT::constructLc(m_proteinSet, m_DBIf, m_Lc);
+        this->m_errorCode = ParentT::constructLc(m_proteinSet, m_DBIf, m_Lc);
         // Parallel prefix sum on Lc to construct Lp
         ParentT::parallelPrefixSum(m_Lc, m_Lp);
         m_flagInitL = true;
-        return m_errorCode;
+        return this->m_errorCode;
     }
 
     PFAAI_ERROR_CODE constructF() {
@@ -122,6 +98,7 @@ class ParFAAIData
         {
             int nThreads = omp_get_num_threads();
             int threadID = omp_get_thread_num();
+            IdType fCount = 0;
 #pragma omp single
             {
                 errorCodes.resize(nThreads, 0);
@@ -132,53 +109,22 @@ class ParFAAIData
             threadTimers[threadID].reset();
             errorCodes[threadID] = m_DBIf.queryProteinSetGPPairs(
                 m_proteinSet, tetramerStart[threadID], tetramerEnd[threadID],
-                m_F.begin() + m_Lp[tetramerStart[threadID]]);
+                m_F.begin() + m_Lp[tetramerStart[threadID]], &fCount);
             threadTimers[threadID].elapsed();
         }
         if (std::any_of(errorCodes.begin(), errorCodes.end(),
                         [](int rc) { return rc != SQLITE_OK; }))
-            return (m_errorCode = PFAAI_ERR_CONSTRUCT);
+            return (this->m_errorCode = PFAAI_ERR_CONSTRUCT);
         //
         // printThreadTimes(" F construction : ", threadTimers);
         return PFAAI_OK;
     }
 
     PFAAI_ERROR_CODE constructT() {
-        return (m_errorCode = ParentT::constructT(m_proteinSet, m_DBIf, m_T));
+        return (this->m_errorCode = ParentT::constructT(m_proteinSet, m_DBIf, m_T));
     }
 
-    PFAAI_ERROR_CODE construct() {
-        timer run_timer;
-        m_errorCode = constructLcandLp();
-        run_timer.elapsed();
-        run_timer.print_elapsed("Lc & Lp contruction : ", std::cout);
-        if (m_errorCode != PFAAI_OK) {
-            std::cerr << "Error in constructing Lc and Lp, error code : "
-                      << m_errorCode << std::endl;
-            return m_errorCode;
-        }
-        //
-        run_timer.reset();
-        m_errorCode = constructF();
-        run_timer.elapsed();
-        run_timer.print_elapsed("F contruction       : ", std::cout);
-        if (m_errorCode != PFAAI_OK) {
-            std::cerr << "Error in constructing F, error code : " << m_errorCode
-                      << std::endl;
-            return m_errorCode;
-        }
-        //
-        run_timer.reset();
-        m_errorCode = constructT();
-        run_timer.elapsed();
-        run_timer.print_elapsed("T construction      : ", std::cout);
-        if (m_errorCode != PFAAI_OK) {
-            std::cerr << "Error in constructing T, error code : " << m_errorCode
-                      << std::endl;
-            return m_errorCode;
-        }
-        return PFAAI_OK;
-    }
+
 };
 
 #endif  // !PAR_FAST_AAI_DATA_H
