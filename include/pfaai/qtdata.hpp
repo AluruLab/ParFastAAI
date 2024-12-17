@@ -70,7 +70,7 @@ class ParFAAIQryTgtData
     using ParentT =
         DataStructInterface<IdType, IdPairType, IdMatrixType, JACType>;
     using DBIfxT = DataBaseInterface<IdType, IdPairType, IdMatrixType>;
-    //
+    using CHelperT = ConstructHelper<IdType, IdPairType, IdMatrixType, JACType>;
 
   private:
     // Inputs
@@ -154,12 +154,12 @@ class ParFAAIQryTgtData
     //
     virtual PFAAI_ERROR_CODE constructT() {
         this->m_errorCode =
-            ParentT::constructT(m_proteinSet, m_qryDBIf, m_qryT);
+            CHelperT::constructT(m_proteinSet, m_qryDBIf, m_qryT);
         if (this->m_errorCode != PFAAI_OK) {
             return this->m_errorCode;
         }
         this->m_errorCode =
-            ParentT::constructT(m_proteinSet, m_tgtDBIf, m_tgtT);
+            CHelperT::constructT(m_proteinSet, m_tgtDBIf, m_tgtT);
         if (this->m_errorCode != PFAAI_OK) {
             return this->m_errorCode;
         }
@@ -187,22 +187,22 @@ class ParFAAIQryTgtData
     //
     virtual PFAAI_ERROR_CODE constructLcandLp() {
         //
-        // Tetramer counts  is summed up from target and query databases
-        this->m_errorCode = ParentT::constructLc(m_proteinSet, m_tgtDBIf, m_Lc);
+        // Tetramer counts  summed up from both target and query databases
+        this->m_errorCode = CHelperT::constructLc(m_proteinSet, m_tgtDBIf, m_Lc);
         if (this->m_errorCode != PFAAI_OK)
             return this->m_errorCode;
         //
-        this->m_errorCode = ParentT::constructLc(m_proteinSet, m_qryDBIf, m_Lc);
+        this->m_errorCode = CHelperT::constructLc(m_proteinSet, m_qryDBIf, m_Lc);
 
         // Parallel prefix sum on Lc to construct Lp
-        ParentT::parallelPrefixSum(m_Lc, m_Lp);
+        CHelperT::parallelPrefixSum(m_Lc, m_Lp);
         m_flagInitL = true;
 
         return this->m_errorCode;
     }
 
     virtual PFAAI_ERROR_CODE constructF() {
-        // TODO(x): construction
+        // TODO(x): verify construction
         assert(m_Lp.back() > 0);
         if (m_flagInitL == false) {
             std::cout << "Lc and Lp are not Initialized" << std::endl;

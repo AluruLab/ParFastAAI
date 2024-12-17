@@ -234,11 +234,12 @@ class DataStructInterface {
     }
  
 
-    static inline IdType genomePairToJACIndex(IdType genomeCount, IdType genomeA,
-                                              IdType genomeB) {
-        return (genomeCount * genomeA) + genomeB -
-               static_cast<int>((genomeA + 2) * (genomeA + 1) / 2);
-    }
+};
+
+template <typename IdType, typename IdPairType, typename IdMatrixType,
+          typename JACType>
+struct ConstructHelper {
+    using DSIfx =  DataStructInterface<IdType, IdPairType, IdMatrixType, JACType>;
 
     static PFAAI_ERROR_CODE constructT(
         const std::vector<std::string>& proteinSet,
@@ -287,8 +288,8 @@ class DataStructInterface {
         {
             int nThreads = omp_get_num_threads();
             int threadID = omp_get_thread_num();
-            IdType tetraStart = BLOCK_LOW(threadID, nThreads, NTETRAMERS);
-            IdType tetraEnd = BLOCK_HIGH(threadID, nThreads, NTETRAMERS);
+            IdType tetraStart = BLOCK_LOW(threadID, nThreads, DSIfx::NTETRAMERS);
+            IdType tetraEnd = BLOCK_HIGH(threadID, nThreads, DSIfx::NTETRAMERS);
 #pragma omp single
             { errorCodes.resize(nThreads, 0); }
 
@@ -317,6 +318,7 @@ class DataStructInterface {
             cumulativeSum += Lc[i];
         }
     }
+
 };
 
 #endif  // !PFAAI_INTERFACE_HPP

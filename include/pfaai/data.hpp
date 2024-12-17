@@ -28,6 +28,7 @@ class ParFAAIData
     using ParentT =
         DataStructInterface<IdType, IdPairType, IdMatrixType, JACType>;
     using DBIfxT = DataBaseInterface<IdType, IdPairType, IdMatrixType>;
+    using CHelperT = ConstructHelper<IdType, IdPairType, IdMatrixType, JACType>;
 
   private:
     // Inputs
@@ -49,7 +50,7 @@ class ParFAAIData
                          float slack = ParentT::DEFAULT_SLACK_PCT)
         : m_DBIf(dbif), m_dbMeta(dbMeta), m_proteinSet(dbMeta.proteinSet),
           m_genomeSet(dbMeta.genomeSet), m_nProteins(m_proteinSet.size()),
-          m_nGenomes(m_genomeSet.size()), m_slack(slack), 
+          m_nGenomes(m_genomeSet.size()), m_slack(slack),
           m_Lc(ParentT::NTETRAMERS, 0), m_Lp(ParentT::NTETRAMERS, 0),
           m_T(m_nProteins, m_nGenomes), m_flagInitL(false) {}
 
@@ -65,19 +66,20 @@ class ParFAAIData
     }
 
     inline IdType genomePairToJACIndex(IdType genomeA, IdType genomeB) const {
-        return ParentT::genomePairToJACIndex(m_nGenomes, genomeA, genomeB);
+        return (m_nGenomes * genomeA) + genomeB -
+               static_cast<int>((genomeA + 2) * (genomeA + 1) / 2);
     }
 
     void initJAC(std::vector<JACType>& jac_tuples) const {  //  NOLINT
-        ParentT::initJAC(m_nGenomes, getGPCount(), jac_tuples); 
+        ParentT::initJAC(m_nGenomes, getGPCount(), jac_tuples);
     }
-    
+
     ~ParFAAIData() {}
 
     PFAAI_ERROR_CODE constructLcandLp() {
-        this->m_errorCode = ParentT::constructLc(m_proteinSet, m_DBIf, m_Lc);
+        this->m_errorCode = CHelperT::constructLc(m_proteinSet, m_DBIf, m_Lc);
         // Parallel prefix sum on Lc to construct Lp
-        ParentT::parallelPrefixSum(m_Lc, m_Lp);
+        CHelperT::parallelPrefixSum(m_Lc, m_Lp);
         m_flagInitL = true;
         return this->m_errorCode;
     }
@@ -121,10 +123,9 @@ class ParFAAIData
     }
 
     PFAAI_ERROR_CODE constructT() {
-        return (this->m_errorCode = ParentT::constructT(m_proteinSet, m_DBIf, m_T));
+        return (this->m_errorCode =
+                    CHelperT::constructT(m_proteinSet, m_DBIf, m_T));
     }
-
-
 };
 
 #endif  // !PAR_FAST_AAI_DATA_H
