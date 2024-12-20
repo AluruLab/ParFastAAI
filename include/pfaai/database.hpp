@@ -1,5 +1,5 @@
-#ifndef SQLITE_INTERFACE_HPP
-#define SQLITE_INTERFACE_HPP
+#ifndef DATABASE_INTERFACE_HPP
+#define DATABASE_INTERFACE_HPP
 
 #include "pfaai/interface.hpp"
 #include <cstddef>
@@ -30,17 +30,18 @@ struct DatabaseNames {
     const std::string SCPDTAB_COLUMN_ACC = "scp_acc";
 };
 
-template <typename IdType, typename IdPairType, typename IdMatType,
-          typename DBNameType>
-class SQLiteInterface
-    : public DataBaseInterface<IdType, IdPairType, IdMatType> {
+template <typename IdType, typename DBNameType>
+class SQLiteInterface : public DefaultDBInterface<IdType> {
     std::string m_pathToDb;
     sqlite3* m_sqltDbPtr;
     int m_dbErrorCode;
     DBNameType m_dbNames;
 
   public:
-    using ParentT = DataBaseInterface<IdType, IdPairType, IdMatType>;
+    using ParentT = DefaultDBInterface<IdType>;
+    using IdPairType =  typename ParentT::IdPairType;
+    using IdMatType =  typename ParentT::IdMatType;
+
     explicit SQLiteInterface(const std::string dbPath,
                              DBNameType dbn = DBNameType())
         : m_pathToDb(dbPath), m_sqltDbPtr(initDB(dbPath, &m_dbErrorCode)),
@@ -165,7 +166,7 @@ class SQLiteInterface
             return errorCode;
         } else {
             while (sqlite3_step(statement) == SQLITE_ROW) {
-                //const int tetraID = 
+                // const int tetraID =
                 sqlite3_column_int(statement, 0);
                 const void* genomeBlob = sqlite3_column_blob(statement, 1);
                 const IdType proteinIndex = sqlite3_column_int(statement, 2);
@@ -336,4 +337,4 @@ class SQLiteInterface
     }
 };
 
-#endif  // !SQLITE_INTERFACE_HPP
+#endif  // !DATABASE_INTERFACE_HPP

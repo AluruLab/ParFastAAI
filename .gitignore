@@ -8,6 +8,7 @@ src/main.o
 main.exe
 par_faai.exe
 build/
+build.debug/
 build.release/
 build.default/
 bkup.txt
@@ -17,3 +18,4 @@ ext/CLI11-v2.4.2.zip
 include/catch2/catch_user_config.hpp
 removed.txt
 WORKSPACE
+tmp/

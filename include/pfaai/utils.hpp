@@ -8,6 +8,7 @@
 #include <chrono>  // NOLINT
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <ratio>  // NOLINT
 #include <string>
 #include <vector>
@@ -89,15 +90,21 @@ template <typename duration> class timer_impl {
 
     timer_impl() : start(std::chrono::steady_clock::now()), _total_elapsed(0) {}
 
-    inline void accumulate() { _total_elapsed += elapsed(); }
+    inline timer_impl<duration>& accumulate() {
+        _total_elapsed += _elapsed_time;
+        return *this;
+    }
 
-    inline void reset() { start = std::chrono::steady_clock::now(); }
+    inline timer_impl<duration>& reset() {
+        start = std::chrono::steady_clock::now();
+        return *this;
+    }
 
-    typename duration::rep elapsed() {
+    inline timer_impl<duration>& elapsed() {
         std::chrono::steady_clock::time_point stop =
             std::chrono::steady_clock::now();
         _elapsed_time = duration(stop - start).count();
-        return _elapsed_time;
+        return *this;
     }
 
     inline typename duration::rep elapsed_to_mins() const {
@@ -108,7 +115,8 @@ template <typename duration> class timer_impl {
         return _elapsed_time / 1000.0;
     }
 
-    void print_elapsed(const std::string prefix, std::ostream& ox) const {
+    void print(const std::string prefix, std::ostream& ox,
+               bool line_end = true) const {
         ox << prefix;
         ox.precision(3);
         ox << std::setw(10) << _elapsed_time << " ms (";
@@ -116,7 +124,13 @@ template <typename duration> class timer_impl {
         ox << std::setw(10) << elapsed_to_seconds() << " sec/";
         ox.precision(4);
         ox << std::setw(10) << elapsed_to_mins() << " min).";
-        ox << std::endl;
+        if (line_end)
+            ox << std::endl;
+    }
+
+    void measure_accumulate_print(const std::string prefix, std::ostream& ox,
+                                  bool line_end = true) {
+        elapsed().accumulate().print(prefix, ox, line_end);
     }
 };
 
@@ -130,5 +144,41 @@ void printThreadTimes(const std::string& prt_prefix,
         threadTimers[threadID].print_elapsed(prt_prefix, std::cout);
     }
 }
+
+//
+// Compute Memory Usage
+//
+#include <sys/resource.h>
+template <typename T> T get_mem_usage() {
+    struct rusage usage;
+    int ret;
+    ret = getrusage(RUSAGE_SELF, &usage);
+    if (ret != 0) {
+        return std::numeric_limits<T>::max();
+    }
+    return T(usage.ru_maxrss);  // in KB
+}
+
+template <typename T>
+void print_memory_usage(const std::string& prt_prefix, std::ostream& ox) {
+    T used_mem = get_mem_usage<T>();
+    ox << prt_prefix;
+    if (used_mem < std::numeric_limits<T>::max()) {
+        ox.precision(2);
+        ox << std::setw(10) << used_mem << " KB (";
+        ox.precision(2);
+        ox << std::setw(10) << used_mem / 1024 << " MB/";
+        ox.precision(2);
+        ox << std::setw(10) << used_mem / (1024 * 1024) << " GB).";
+    } else {
+        ox << " Mem usage returned error ";
+    }
+    ox << std::endl;
+}
+#define PRINT_RUNTIME_MEMUSED(r_timer, sprefix, ostream)                       \
+    {                                                                          \
+        r_timer.measure_accumulate_print(sprefix, ostream, false);             \
+        print_memory_usage<uint64_t>("; ", std::cout);                         \
+    }
 
 #endif  // !UTILS_HPP

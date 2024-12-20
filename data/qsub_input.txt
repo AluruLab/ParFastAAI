@@ -1,0 +1,2 @@
+Xanthomonas_albilineans_GCA_000962915_1.fna.gz
+Xanthomonas_albilineans_GCA_000962935_1.fna.gz

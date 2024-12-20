@@ -1,14 +1,14 @@
 #ifndef PFAAI_INTERFACE_HPP
 #define PFAAI_INTERFACE_HPP
 
-#include <algorithm>
 #include <cassert>
 #include <fmt/format.h>
+#include <iostream>
 #include <omp.h>
 #include <ostream>
-#include <iostream>
 #include <sqlite3.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "pfaai/utils.hpp"
@@ -20,6 +20,17 @@ enum PFAAI_ERROR_CODE {
     PFAAI_ERR_CONSTRUCT = 3
 };
 
+#define PFAAI_HANDLE_ERROR(err_code, sprefix, ostream)                         \
+    {                                                                          \
+        if (err_code != PFAAI_OK) {                                            \
+            ostream << "Error in " << sprefix                                  \
+                    << " ; Error code : " << err_code << std::endl;            \
+            return err_code;                                                   \
+        }                                                                      \
+    }
+
+//
+// Utility Class for Pair with first and second element
 template <typename DT1, typename DT2> struct DPair {
     DT1 first;
     DT2 second;
@@ -47,6 +58,13 @@ std::ostream& operator<<(std::ostream& ox, DPair<DT1, DT2> const& cx) {
     return ox;
 }
 
+template <typename DT1, typename DT2>
+std::string format_as(DPair<DT1, DT2> const& cx) {
+    return fmt::format("({}, {})", cx.first, cx.second);
+}
+
+//
+// Utility Class for Matrix
 template <typename DT> class DMatrix {
     std::size_t m_nrows, m_ncols;
     std::vector<DT> m_data;
@@ -104,19 +122,116 @@ std::ostream& operator<<(std::ostream& ox, DMatrix<IT> const& cx) {
     return ox;
 }
 
+//
+// Utility class for triple
+template <typename IdType> struct ETriple {
+    IdType proteinIndex;
+    IdType genomeA;
+    IdType genomeB;
+
+    ETriple() : proteinIndex(-1), genomeA(-1), genomeB(-1) {}
+    ETriple(const IdType proteinIndexVal, const IdType genomeAVal,
+            const IdType genomeBVal)
+        : proteinIndex(proteinIndexVal), genomeA(genomeAVal),
+          genomeB(genomeBVal) {}
+
+    inline bool operator<(const ETriple<IdType>& other) const {
+        if (genomeA != other.genomeA) {
+            return genomeA < other.genomeA;
+        }
+        if (genomeB != other.genomeB) {
+            return genomeB < other.genomeB;
+        }
+        return proteinIndex < other.proteinIndex;
+    }
+
+    inline bool operator==(const ETriple<IdType>& other) const {
+        return (genomeA == other.genomeA) && (genomeB == other.genomeB) &&
+               (proteinIndex == other.proteinIndex);
+    }
+
+    template <class Archive> void serialize(Archive& archive) {  // NOLINT
+        archive(proteinIndex, genomeA, genomeB);
+    }
+};
+
+template <typename IT = int> std::string format_as(const ETriple<IT>& ijx) {
+    return fmt::format("({:>3d}, {:>3d}, {:>3d})", ijx.genomeA, ijx.genomeB,
+                       ijx.proteinIndex);
+}
+
+template <typename IT>
+std::ostream& operator<<(std::ostream& ox, ETriple<IT> const& cx) {
+    ox << "(" << cx.genomeB << ", " << cx.genomeA << ", " << cx.proteinIndex
+       << ")";
+    return ox;
+}
+
+//
+// Tuple class with
+//    - genomeA, genomeB
+//    - N (No. entries corresponding to the genome pair)
+//    - S (Sum of entries corresponding to the genome pair)
+//
+template <typename IdType, typename ValueType = double> struct JACTuple {
+    IdType genomeA;
+    IdType genomeB;
+    ValueType S;
+    IdType N;
+
+    inline bool operator==(const JACTuple<IdType, ValueType>& other) const {
+        return (genomeA == other.genomeA) && (genomeB == other.genomeB) &&
+               (N == other.N) && (std::abs(S - other.S) < 1e-7);
+    }
+
+    template <class Archive> void serialize(Archive& archive) {  // NOLINT
+        archive(genomeA, genomeB, S, N);
+    }
+};
+
+template <typename IT = int, typename VT = double>
+std::string format_as(const JACTuple<IT, VT>& ijx) {
+    return fmt::format("({:>3d}, {:>3d}, {:>03.2f}, {:>3d})", ijx.genomeA,
+                       ijx.genomeB, ijx.S, ijx.N);
+}
+
+template <typename IT, typename VT>
+std::ostream& operator<<(std::ostream& ox, JACTuple<IT, VT> const& cx) {
+    ox << "(" << cx.genomeA << ", " << cx.genomeB << ", " << cx.S << ", "
+       << cx.N << ")";
+    return ox;
+}
+
+//
+// Class encapsulating the array of triples
+//
+template <typename IdType> struct EParData {
+    using IdTripleT = ETriple<IdType>;
+    // tetramer tuples : Array E construction : Phase 2
+    std::vector<IdTripleT> E;
+    // thread distributions of E array ~(|E|/p)
+    std::vector<IdType> threadEStarts, threadESize;  // size nThreads
+};
+
 struct DBMetaData {
     std::vector<std::string> proteinSet;
     std::vector<std::string> genomeSet;
 };
 
-template <typename IdType, typename IdPairType, typename IdMatType,
-          typename ErrCodeType = int>
+//
+// Database Interface
+template <typename IdType, typename IdPairT, typename IdMatT,
+          typename ErrCodeT = int>
 class DataBaseInterface {
-
   public:
+    using IdPairType = IdPairT;
+    using IdMatType = IdMatT;
+    using ErrCodeType = ErrCodeT;
     using PairIterT = typename std::vector<IdPairType>::iterator;
     //
     DataBaseInterface() {}
+    //
+    virtual ~DataBaseInterface() {}
     //
     virtual inline bool isDBOpen() const = 0;
     virtual ErrCodeType getDBErrorCode() const = 0;
@@ -145,180 +260,113 @@ class DataBaseInterface {
     queryProteinTetramerCounts(const std::vector<std::string>& proteinSet,
                                IdType proteinStart, IdType proteinEnd,
                                IdMatType& T) const = 0;  // NOLINT
-    //
-    virtual ~DataBaseInterface() {}
 };
 
-template <typename IdType, typename IdPairType, typename IdMatrixType,
-          typename JACType>
+template <typename IdType>
+using DefaultDBInterface =
+    DataBaseInterface<IdType, DPair<IdType, IdType>, DMatrix<IdType>, int>;
+
+//
+// Data Structure interface
+template <typename IdType, typename IdPairT, typename IdMatrixT,
+          typename JaccardT>
 class DataStructInterface {
+  public:
+    using IdPairType = IdPairT;
+    using IdMatrixType = IdMatrixT;
+    using JACType = JaccardT;
+
   protected:
     // Error Codes
     PFAAI_ERROR_CODE m_errorCode;
+    std::unordered_map<std::string, bool> m_initFlags{
+        {"L", false},
+        {"E", false},
+        {"F", false},
+        {"T", false},
+    };
+    // Data
+    const std::vector<std::string>& m_proteinSet;
+    // Data structures
+    std::vector<IdType> m_Lc;
+    std::vector<IdType> m_Lp;
+    std::vector<IdPairType> m_F;
+    IdMatrixType m_T;
+    EParData<IdType> m_pE;
+
+    // value data
+    float m_slack;
+
   public:
     // constants
     constexpr static IdType NTETRAMERS = (20 * 20 * 20 * 20);
     constexpr static float DEFAULT_SLACK_PCT = 0.0;
     //
-    DataStructInterface() : m_errorCode(PFAAI_OK) {}
-    //
-    // Getter functions
-    virtual const std::vector<IdType>& getLc() const = 0;
-    virtual const std::vector<IdType>& getLp() const = 0;
-    virtual const IdMatrixType& getT() const = 0;
-    virtual const std::vector<IdPairType>& getF() const = 0;
-    virtual float getSlackPercentage() const = 0;
-    virtual inline IdType getTetramerCount() const { return NTETRAMERS; }
-    virtual IdType getQryGenomeCount() const = 0;
-    virtual IdType getTgtGenomeCount() const = 0;
-    virtual IdType getGPCount() const = 0;
-    virtual IdType genomePairToJACIndex(IdType genomeA,
-                                        IdType genomeB) const = 0;
-    virtual void initJAC(std::vector<JACType>& jac_tuples) const = 0;  // NOLINT
-    virtual PFAAI_ERROR_CODE constructT() = 0;
-    virtual PFAAI_ERROR_CODE constructLcandLp() = 0;
-    virtual PFAAI_ERROR_CODE constructF() = 0;
+    DataStructInterface(const std::vector<std::string>& proteinSet,
+                        std::size_t nTRows, std::size_t nTColumns, float slack)
+        : m_errorCode(PFAAI_OK), m_proteinSet(proteinSet), m_Lc(NTETRAMERS, 0),
+          m_Lp(NTETRAMERS, 0), m_T(nTRows, nTColumns), m_slack(slack) {}
     //
     virtual ~DataStructInterface() {}
     //
+    // Reference functions to data structures
+    inline virtual const std::vector<IdType>& refLc() const { return m_Lc; }
+    inline virtual const std::vector<IdType>& refLp() const { return m_Lp; }
+    inline virtual const IdMatrixType& refT() const { return m_T; }
+    inline virtual const std::vector<IdPairType>& refF() const { return m_F; }
+    inline virtual const EParData<IdType>& refE() const { return m_pE; }
+    inline virtual const std::vector<std::string>& refProteinSet() const {
+        return m_proteinSet;
+    }
+    //
+    // Getter functions to dimensions
+    virtual inline IdType nTetramers() const { return NTETRAMERS; }
+    virtual float slack() const { return m_slack; }
+    virtual IdType qrySetSize() const = 0;
+    virtual IdType tgtSetSize() const = 0;
+    virtual IdType nGenomePairs() const = 0;
+    //
+    // Mapper/Validator functions
+    virtual IdType genomePairToIndex(IdType genomeA, IdType genomeB) const = 0;
+    virtual bool isQryGenome(IdType genome) const = 0;
+    virtual bool isValidPair(IdType qry, IdType tgt) const = 0;
+    virtual IdType countGenomePairs(IdType nQry, IdType nTgt) const = 0;
+    //
+    // Construction functions
+    virtual std::vector<JACType> initJAC() const = 0;
+    virtual PFAAI_ERROR_CODE constructL() = 0;
+    virtual PFAAI_ERROR_CODE constructF() = 0;
+    virtual PFAAI_ERROR_CODE constructT() = 0;
+    virtual PFAAI_ERROR_CODE constructE() = 0;
+    //
+    // Main construction function
     virtual PFAAI_ERROR_CODE construct() {
         timer run_timer;
-        m_errorCode = constructLcandLp();
-        run_timer.elapsed();
-        run_timer.print_elapsed("Lc & Lp contruction : ", std::cout);
-        if (m_errorCode != PFAAI_OK) {
-            std::cerr << "Error in constructing Lc and Lp, error code : "
-                      << m_errorCode << std::endl;
-            return m_errorCode;
-        }
+        m_errorCode = constructL();
+        PRINT_RUNTIME_MEMUSED(run_timer, "Lc & Lp contruction : ", std::cout);
+        PFAAI_HANDLE_ERROR(m_errorCode, "Lc & Lp contruction", std::cerr);
         //
         run_timer.reset();
         m_errorCode = constructF();
-        run_timer.elapsed();
-        run_timer.print_elapsed("F contruction       : ", std::cout);
-        if (m_errorCode != PFAAI_OK) {
-            std::cerr << "Error in constructing F, error code : " << m_errorCode
-                      << std::endl;
-            return m_errorCode;
-        }
+        PRINT_RUNTIME_MEMUSED(run_timer, "F contruction       : ", std::cout);
+        PFAAI_HANDLE_ERROR(m_errorCode, "F contruction", std::cerr);
         //
         run_timer.reset();
         m_errorCode = constructT();
-        run_timer.elapsed();
-        run_timer.print_elapsed("T construction      : ", std::cout);
-        if (m_errorCode != PFAAI_OK) {
-            std::cerr << "Error in constructing T, error code : " << m_errorCode
-                      << std::endl;
-            return m_errorCode;
-        }
-        return PFAAI_OK;
-    }
-
-    //
-
-    static void initJAC(IdType nGenomes, IdType nTuples,
-                        std::vector<JACType>& jac_tuples) {  //  NOLINT
-        jac_tuples.resize(nTuples);
-        IdType gA = 0, gB = 1;
-        for(std::size_t i = 0; i < jac_tuples.size(); i++) {
-            jac_tuples[i].genomeA = gA;
-            jac_tuples[i].genomeB = gB;
-
-            if (gB == nGenomes - 1) {
-                gA += 1;
-                gB = gA + 1;
-            } else {
-                gB += 1;
-            }
-        }
-    }
- 
-
-};
-
-template <typename IdType, typename IdPairType, typename IdMatrixType,
-          typename JACType>
-struct ConstructHelper {
-    using DSIfx =  DataStructInterface<IdType, IdPairType, IdMatrixType, JACType>;
-
-    static PFAAI_ERROR_CODE constructT(
-        const std::vector<std::string>& proteinSet,
-        const DataBaseInterface<IdType, IdPairType, IdMatrixType>& inDBIf,
-        IdMatrixType& inT) {  // NOLINT
-        // Assuming inT is a initalized matrix of size nProteins x nGenomes
-        std::vector<timer> threadTimers;
-        std::vector<int> errorCodes;
-#pragma omp parallel default(none)                                             \
-    shared(proteinSet, errorCodes, threadTimers, inDBIf, inT)
-        {
-            IdType nProteins = proteinSet.size();
-            int nThreads = omp_get_num_threads();
-            int threadID = omp_get_thread_num();
-            //
-#pragma omp single
-            {
-                threadTimers.resize(nThreads);
-                errorCodes.resize(nThreads);
-            }
-            //
-            threadTimers[threadID].reset();
-            int proteinStart = BLOCK_LOW(threadID, nThreads, nProteins);
-            int proteinEnd = BLOCK_HIGH(threadID, nThreads, nProteins);
-
-            errorCodes[threadID] = inDBIf.queryProteinTetramerCounts(
-                proteinSet, proteinStart, proteinEnd, inT);
-            threadTimers[threadID].elapsed();
-        }
-
-        if (std::any_of(errorCodes.begin(), errorCodes.end(),
-                        [](int rc) { return rc != SQLITE_OK; }))
-            return PFAAI_ERR_CONSTRUCT;
+        PRINT_RUNTIME_MEMUSED(run_timer, "T construction      : ", std::cout);
+        PFAAI_HANDLE_ERROR(m_errorCode, "T contruction", std::cerr);
         //
-        // printThreadTimes("T construction : ", threadTimers);
+        run_timer.reset();
+        m_errorCode = constructE();
+        PRINT_RUNTIME_MEMUSED(run_timer, "E constr.   (fin)   : ", std::cout);
+        PFAAI_HANDLE_ERROR(m_errorCode, "E constr.   (fin)", std::cerr);
         return PFAAI_OK;
     }
-
-    static PFAAI_ERROR_CODE constructLc(
-        const std::vector<std::string>& proteinSet,
-        const DataBaseInterface<IdType, IdPairType, IdMatrixType>& inDBIf,
-        std::vector<IdType>& Lc) {  // NOLINT
-        std::vector<int> errorCodes;
-        // Lc construction
-#pragma omp parallel default(none) shared(errorCodes, proteinSet, inDBIf, Lc)
-        {
-            int nThreads = omp_get_num_threads();
-            int threadID = omp_get_thread_num();
-            IdType tetraStart = BLOCK_LOW(threadID, nThreads, DSIfx::NTETRAMERS);
-            IdType tetraEnd = BLOCK_HIGH(threadID, nThreads, DSIfx::NTETRAMERS);
-#pragma omp single
-            { errorCodes.resize(nThreads, 0); }
-
-            for (const std::string& protein : proteinSet) {
-                int qryErrCode = inDBIf.queryTetramerOccCounts(
-                    protein, tetraStart, tetraEnd, Lc);
-                if (qryErrCode != SQLITE_OK) {
-                    errorCodes[threadID] = qryErrCode;
-                }
-            }
-        }
-        if (std::any_of(errorCodes.begin(), errorCodes.end(),
-                        [](int rc) { return rc != SQLITE_OK; }))
-            return PFAAI_ERR_CONSTRUCT;
-        return PFAAI_OK;
-    }
-
-    static void parallelPrefixSum(const std::vector<IdType>& Lc,
-                                  std::vector<IdType>& Lp) {  // NOLINT
-        // Parallel prefix sum on Lc to construct Lp
-        IdType cumulativeSum = 0;
-#pragma omp parallel for simd reduction(inscan, + : cumulativeSum)
-        for (std::size_t i = 0; i < Lc.size(); i++) {
-            Lp[i] = cumulativeSum;
-#pragma omp scan exclusive(cumulativeSum)
-            cumulativeSum += Lc[i];
-        }
-    }
-
 };
+
+template <typename IdType>
+using DefaultDataStructInterface =
+    DataStructInterface<IdType, DPair<IdType, IdType>, DMatrix<IdType>,
+                        JACTuple<IdType>>;
 
 #endif  // !PFAAI_INTERFACE_HPP

@@ -1,21 +1,27 @@
 
-#include "pfaai_tests.hpp"  // NOLINT
-#include "catch2/catch_test_macros.hpp"
-#include "pfaai/data.hpp"
-#include "pfaai/impl.hpp"
-#include "pfaai/sqltif.hpp"
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
+
 #include <catch2/catch_all.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/vector.hpp>
-#include <fstream>
+
+#include <pfaai/data_impl.hpp>
+#include <pfaai/database.hpp>
+#include <pfaai/algorithm_impl.hpp>
+
+#include "pfaai_tests.hpp"  // NOLINT
 
 using IdType = int;
 using ValueType = double;
 using IdPairType = DPair<IdType, IdType>;
 using IdMatType = DMatrix<IdType>;
-using SQLiteIfT = SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames>;
-using PFImplT = ParFAAIImpl<IdType, IdPairType, IdMatType, ValueType>;
-using PFDataT = ParFAAIData<IdType, IdPairType, IdMatType, PFImplT::JACType>;
+using SQLiteIfT = SQLiteInterface<IdType, DatabaseNames>;
+using PFImpl = ParFAAIImpl<IdType, ValueType>;
+using PFDataT = ParFAAIData<IdType>;
 
 static constexpr char G_DB_PATH[] = "data/modified_xantho_fastaai2.db";
 static constexpr IdType G_NTETRAMERS = (20 * 20 * 20 * 20);
@@ -98,8 +104,8 @@ TEST_CASE("Query Protein Set Tetramers", "[prot set teteramers]") {
     std::vector<IdPairType> F(Lp.back() + Lc.back(), IdPairType(-1, -1));
     SQLiteIfT sqlt_if(G_DB_PATH);
     int fct = 0;
-    int rc =
-        sqlt_if.queryProteinSetGPPairs(G_PROTEINSET, 2000, 3000, F.begin(), &fct);
+    int rc = sqlt_if.queryProteinSetGPPairs(G_PROTEINSET, 2000, 3000, F.begin(),
+                                            &fct);
     REQUIRE(rc == SQLITE_OK);
     REQUIRE(F[Lp[2000]] == IdPairType(5, 0));
     REQUIRE(F[Lp[2415] - 1] == IdPairType(35, 0x13));
@@ -107,15 +113,14 @@ TEST_CASE("Query Protein Set Tetramers", "[prot set teteramers]") {
 }
 
 TEST_CASE("Test Data Structures Construction", "[construct Lc Lp F T]") {
-    SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames> sqlt_if(
-        G_DB_PATH);
+    SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
     DBMetaData dbMeta;
     sqlt_if.queryMetaData(dbMeta);
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
-    pfaaiData.constructLcandLp();
-    std::vector<IdType> Lc = pfaaiData.getLc();
-    std::vector<IdType> Lp = pfaaiData.getLp();
+    pfaaiData.constructL();
+    std::vector<IdType> Lc = pfaaiData.refLc();
+    std::vector<IdType> Lp = pfaaiData.refLp();
     std::vector<IdType> refLc, refLp;
     {
         std::ifstream lcx(REF_LC_ARRAY, std::ios::binary);
@@ -131,7 +136,7 @@ TEST_CASE("Test Data Structures Construction", "[construct Lc Lp F T]") {
     REQUIRE(refLp == Lp);
     //
     pfaaiData.constructF();
-    std::vector<IdPairType> F = pfaaiData.getF();
+    std::vector<IdPairType> F = pfaaiData.refF();
     std::vector<IdPairType> refF;
     {
         std::ifstream fcx(REF_F_ARRAY, std::ios::binary);
@@ -141,7 +146,7 @@ TEST_CASE("Test Data Structures Construction", "[construct Lc Lp F T]") {
     REQUIRE(refF == F);
     //
     pfaaiData.constructT();
-    IdMatType T = pfaaiData.getT();
+    IdMatType T = pfaaiData.refT();
     IdMatType refT(G_PROTEINSET_SIZE, G_GENOMESET_SIZE);
     {
         std::ifstream tcx(REF_T_MATRIX, std::ios::binary);
@@ -152,25 +157,30 @@ TEST_CASE("Test Data Structures Construction", "[construct Lc Lp F T]") {
 }
 
 TEST_CASE("Test Impl ouputs", "[construct E JAC and AJI]") {
-    SQLiteInterface<IdType, IdPairType, IdMatType, DatabaseNames> sqlt_if(
-        G_DB_PATH);
+    SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
     DBMetaData dbMeta;
     sqlt_if.queryMetaData(dbMeta);
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
     pfaaiData.construct();
     //
-    ParFAAIImpl<IdType, IdPairType, IdMatType, double> pfaaiImpl(pfaaiData);
 
-    pfaaiImpl.generateTetramerTuples();
-    std::vector<ETriple<IdType>> E = pfaaiImpl.getE();
+    // pfaaiImpl.generateTetramerTuples();
+    const std::vector<ETriple<IdType>>& E = pfaaiData.refE().E;
     std::vector<ETriple<IdType>> refE;
     {
         std::ifstream tcx(REF_SRTD_E_ARRAY, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
         iarchive(refE);
     }
+    REQUIRE(E == refE);
+    IdType nTotal = 0;
+    for (const auto& ex : E)
+        if (ex.genomeA == 0 || ex.genomeA == 2)
+            nTotal++;
+    std::cout << "N total : " << nTotal << std::endl;
     //
+    ParFAAIImpl<IdType, double> pfaaiImpl(pfaaiData);
     pfaaiImpl.computeJAC();
     std::vector<JACTuple<IdType, double>> JAC = pfaaiImpl.getJAC(), refJAC;
     {
