@@ -318,6 +318,8 @@ class DataStructInterface {
     inline virtual const std::vector<std::string>& refProteinSet() const {
         return m_proteinSet;
     }
+    inline virtual const std::vector<std::string>& refQuerySet() const = 0;
+    inline virtual const std::vector<std::string>& refTargetSet() const = 0;
     //
     // Getter functions to dimensions
     virtual inline IdType nTetramers() const { return NTETRAMERS; }
@@ -328,9 +330,13 @@ class DataStructInterface {
     //
     // Mapper/Validator functions
     virtual IdType genomePairToIndex(IdType genomeA, IdType genomeB) const = 0;
+    virtual inline IdType mapQueryId(IdType qry) const = 0;
+    virtual inline IdType mapTargetId(IdType tgt) const = 0;
     virtual bool isQryGenome(IdType genome) const = 0;
     virtual bool isValidPair(IdType qry, IdType tgt) const = 0;
     virtual IdType countGenomePairs(IdType nQry, IdType nTgt) const = 0;
+    //
+    // print functions
     //
     // Construction functions
     virtual std::vector<JACType> initJAC() const = 0;

@@ -2,17 +2,20 @@
 #include <algorithm>
 #include <cstdio>
 #include <iostream>
-#include <omp.h>
-#include <sqlite3.h>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
-#include "fmt/format.h"
+#include <CLI/CLI.hpp>
+#include <fmt/format.h>
+#include <omp.h>
+#include <sqlite3.h>
+
+#include "fmt/core.h"
 #include "pfaai/algorithm_impl.hpp"
 #include "pfaai/data_impl.hpp"
 #include "pfaai/database.hpp"
-#include <CLI/CLI.hpp>
+#include "pfaai/interface.hpp"
 
 using IdType = int;
 using ValueType = double;
@@ -94,12 +97,15 @@ struct AppParams {
     }
 };
 
-void print_aji(const std::vector<PFImpl::JACType>& cJAC,
+void print_aji(const PFDSInterface& dsif,
+               const std::vector<PFImpl::JACType>& cJAC,
                const std::vector<ValueType>& cAJI) {
     std::cout << "AJI Ouput : " << std::endl;
     std::cout << " [(GP1, GP2,   SUM, NCP) ->  AJI]" << std::endl;
     for (std::size_t i = 0; i < cAJI.size(); i++) {
-        fmt::print(" [{} -> {:03.2f}] \n", cJAC[i], cAJI[i]);
+        fmt::print(" [{}, {} -> {:03.2f}] \n",
+                   dsif.genomePairToIndex(cJAC[i].genomeA, cJAC[i].genomeB),
+                   cJAC[i], cAJI[i]);
     }
 }
 
@@ -111,41 +117,32 @@ void printOutput(const PFDSInterface& pfdata, const PFImpl& impl,
     const std::vector<PFImpl::JACType>& cJAC = impl.getJAC();
     const std::vector<ValueType>& cAJI = impl.getAJI();
 
+    std::cout << nQryGenomes << " " << nTgtGeneomes << std::endl;
     DMatrix<ValueType> ajiMatrix(nQryGenomes, nTgtGeneomes, 0.0);
     for (std::size_t i = 0; i < cJAC.size(); i++) {
-        ajiMatrix(cJAC[i].genomeA, cJAC[i].genomeB) = cAJI[i];
-        ajiMatrix(cJAC[i].genomeB, cJAC[i].genomeA) = cAJI[i];
+        IdType ga = pfdata.mapQueryId(cJAC[i].genomeA);
+        IdType gb = pfdata.mapTargetId(cJAC[i].genomeB);
+        ajiMatrix(ga, gb) = cAJI[i];
+        //
+        // Other diagonal if present
+        if (gb < nQryGenomes && ga < nTgtGeneomes)
+            ajiMatrix(gb, ga) = cAJI[i];
     }
 
     // std::ofstream ofx(pathToOutputFile);
     FILE* fpx = fopen(pfaaiAppArgs.pathToOutputFile.c_str(), "w");
+
+    const auto& tgtRef = pfdata.refTargetSet();
+    // Header
+    fmt::print(fpx, "{}{}\n", pfaaiAppArgs.outFieldSeparator,
+               fmt::join(tgtRef.begin(), tgtRef.end(),
+                         pfaaiAppArgs.outFieldSeparator));
+
+    // Data
     const std::vector<ValueType>& ajiMatData = ajiMatrix.data();
     for (std::size_t i = 0; i < ajiMatrix.rows(); i++) {
-        fmt::print(fpx, "{}\n",
-                   fmt::join(ajiMatData.begin() + i * nTgtGeneomes,
-                             ajiMatData.begin() + (i + 1) * nTgtGeneomes,
-                             pfaaiAppArgs.outFieldSeparator));
-    }
-    fclose(fpx);
-}
-
-void printQTOutput(const PFDSInterface& pfdata, const PFImpl& impl,
-                   const AppParams& pfaaiAppArgs) {
-    IdType nQryGenomes = pfdata.qrySetSize();
-    IdType nTgtGeneomes = pfdata.tgtSetSize();
-    //
-    const std::vector<PFImpl::JACType>& cJAC = impl.getJAC();
-    const std::vector<ValueType>& cAJI = impl.getAJI();
-
-    DMatrix<ValueType> ajiMatrix(nQryGenomes, nTgtGeneomes, 0.0);
-    for (std::size_t i = 0; i < cJAC.size(); i++) {
-        ajiMatrix(cJAC[i].genomeA, cJAC[i].genomeB - nTgtGeneomes) = cAJI[i];
-    }
-
-    // std::ofstream ofx(pathToOutputFile);
-    FILE* fpx = fopen(pfaaiAppArgs.pathToOutputFile.c_str(), "w");
-    const std::vector<ValueType>& ajiMatData = ajiMatrix.data();
-    for (std::size_t i = 0; i < ajiMatrix.rows(); i++) {
+        fmt::print(fpx, "{}{}", pfdata.refQuerySet()[i],
+                   pfaaiAppArgs.outFieldSeparator);
         fmt::print(fpx, "{}\n",
                    fmt::join(ajiMatData.begin() + i * nTgtGeneomes,
                              ajiMatData.begin() + (i + 1) * nTgtGeneomes,
@@ -175,7 +172,7 @@ int parallel_fastaai(const AppParams& pfaaiAppArgs) {
     PFImpl pfaaiImpl(pfaaiData);
     pfaaiImpl.run();
 #ifndef NDEBUG
-    print_aji(pfaaiImpl.getJAC(), pfaaiImpl.getAJI());
+    print_aji(pfaaiData, pfaaiImpl.getJAC(), pfaaiImpl.getAJI());
 #endif
     if (pfaaiAppArgs.pathToOutputFile.size() > 0) {
         printOutput(pfaaiData, pfaaiImpl, pfaaiAppArgs);
@@ -209,9 +206,9 @@ int parallel_subset_fastaai(const AppParams& pfaaiAppArgs) {
     // Run parallel Fast AAI algorithm
     PFImpl pfaaiImpl(pfaaiData);
     pfaaiImpl.run();
-    return 0;
 #ifndef NDEBUG
-    print_aji(pfaaiImpl.getJAC(), pfaaiImpl.getAJI());
+    // pfaaiImpl.print_e();
+    print_aji(pfaaiData, pfaaiImpl.getJAC(), pfaaiImpl.getAJI());
 #endif
     if (pfaaiAppArgs.pathToOutputFile.size() > 0) {
         printOutput(pfaaiData, pfaaiImpl, pfaaiAppArgs);
@@ -262,11 +259,11 @@ int parallel_qry2tgt_fastaai(const AppParams& pfaaiAppArgs) {
     PFImpl pfaaiImpl(pfaaiQTData);
     pfaaiImpl.run();
 #ifndef NDEBUG
-    print_aji(pfaaiImpl.getJAC(), pfaaiImpl.getAJI());
+    print_aji(pfaaiQTData, pfaaiImpl.getJAC(), pfaaiImpl.getAJI());
 #endif
     if (pfaaiAppArgs.pathToOutputFile.size() > 0) {
         // TODO(x)::
-        printQTOutput(pfaaiQTData, pfaaiImpl, pfaaiAppArgs);
+        printOutput(pfaaiQTData, pfaaiImpl, pfaaiAppArgs);
     }
 
     return PFAAI_OK;

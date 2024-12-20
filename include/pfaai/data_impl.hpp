@@ -45,6 +45,12 @@ class ParFAAIData : public DefaultDataStructInterface<IdType> {
 
     ~ParFAAIData() {}
 
+    inline virtual const std::vector<std::string>& refQuerySet() const {
+        return m_genomeSet;
+    } 
+    inline virtual const std::vector<std::string>& refTargetSet() const {
+        return m_genomeSet;
+    }
     // Dimensions
     inline IdType qrySetSize() const { return m_nGenomes; }
     inline IdType tgtSetSize() const { return m_nGenomes; }
@@ -57,6 +63,8 @@ class ParFAAIData : public DefaultDataStructInterface<IdType> {
         return (m_nGenomes * genomeA) + genomeB -
                static_cast<IdType>((genomeA + 2) * (genomeA + 1) / 2);
     }
+    inline IdType mapQueryId(IdType qry) const { return qry; }
+    inline IdType mapTargetId(IdType tgt) const { return tgt; }
     inline bool isQryGenome(IdType genome) const { return true; }
     inline bool isValidPair(IdType qryId, IdType tgtId) const {
         return qryId < tgtId;
@@ -192,8 +200,15 @@ class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
 
     virtual ~ParFAAIQSubData() {}
 
+    inline virtual const std::vector<std::string>& refQuerySet() const {
+        return m_qryGenomeSet;
+    } 
+    inline virtual const std::vector<std::string>& refTargetSet() const {
+        return m_genomeSet;
+    }
+
     //
-    inline IdType qrySetSize() const { return m_nGenomes; }
+    inline IdType qrySetSize() const { return m_nQryGenomes; }
     inline IdType tgtSetSize() const { return m_nGenomes; }
     inline IdType nGenomePairs() const {
         // Matrix is of two parts:
@@ -206,15 +221,17 @@ class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
         //
         // Matrix is of size |Q| x |NQ| +
         //     each row = number of target genes
-        return m_qryIndicator[genomeB] *
-                   ((m_genomeIndexMap[genomeA] * m_nTgtGenomes) +
-                    m_genomeIndexMap[genomeB]) +
+        int qIndicator = m_qryIndicator[genomeA] && !m_qryIndicator[genomeB];
+        int gia = m_genomeIndexMap[genomeA], gib = m_genomeIndexMap[genomeB];
+        return qIndicator * ((gia * m_nTgtGenomes) + gib) +
                // Case 2: If genomeB is a query genome
-               (1 - m_qryIndicator[genomeB]) *
+               (1 - qIndicator) *
                    (m_qtMatSize +
-                    ((m_nQryGenomes * genomeA) + genomeB -
-                     static_cast<IdType>((genomeA + 2) * (genomeA + 1) / 2)));
+                    ((m_nQryGenomes * gia) + gib -
+                     static_cast<IdType>((gia + 2) * (gia + 1) / 2)));
     }
+    inline IdType mapQueryId(IdType qry) const { return m_genomeIndexMap[qry]; }
+    inline IdType mapTargetId(IdType tgt) const { return tgt; }
 
     inline bool isQryGenome(IdType genome) const {
         return m_qryIndicator[genome];
@@ -366,6 +383,7 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
     IdMatrixType m_qryT, m_tgtT;
     std::vector<IdPairType> m_F;
     EParData<IdType> m_pE;
+    std::vector<IdType> m_queryIndexMap, m_targetIndexMap;
 
   public:
     explicit ParFAAIQryTgtData(const DBIfx& qryDbif, const DBIfx& tgtDbif,
@@ -377,17 +395,23 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
                  qryDbMeta.genomeSet.size() + tgtDbMeta.genomeSet.size(),
                  slack),
           m_qryDBIf(qryDbif), m_tgtDBIf(tgtDbif), m_qryDBMeta(qryDbMeta),
-          m_tgtDBMeta(tgtDbMeta),
-          m_nSharedProteins(protSet.size()),
+          m_tgtDBMeta(tgtDbMeta), m_nSharedProteins(protSet.size()),
           m_nUnionSize(m_qryDBMeta.genomeSet.size() +
                        m_tgtDBMeta.genomeSet.size()),
           m_qryT(m_nSharedProteins, m_qryDBMeta.genomeSet.size()),
           m_tgtT(m_nSharedProteins, m_tgtDBMeta.genomeSet.size()) {
 
-        // TODO(x): Initialize qry inicators, lookup
+        // TODO(x): Initialize qry inicators, lookup, index maps
     }
 
     ~ParFAAIQryTgtData() {}
+
+    inline virtual const std::vector<std::string>& refQuerySet() const {
+        return m_qryDBMeta.genomeSet;
+    } 
+    inline virtual const std::vector<std::string>& refTargetSet() const {
+        return m_tgtDBMeta.genomeSet;
+    }
 
     //
     inline IdType qrySetSize() const { return m_qryDBMeta.genomeSet.size(); }
@@ -401,8 +425,10 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
         IdType tgtSize = m_tgtDBMeta.genomeSet.size();
         return genomeA * tgtSize + genomeB;
     }
+    inline IdType mapQueryId(IdType qry) const { return m_queryIndexMap[qry]; }
+    inline IdType mapTargetId(IdType tgt) const { return m_targetIndexMap[tgt]; }
     inline bool isQryGenome(IdType genome) const {
-        return m_qryIndicator[genome]; 
+        return m_qryIndicator[genome];
     }
     virtual bool isValidPair(IdType qry, IdType tgt) const {
         return m_qryIndicator[qry] && !m_qryIndicator[tgt];
@@ -504,13 +530,13 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
             IdType tgtFCount = 0, qryFCount = 0;
             auto threadIter = m_F.begin() + this->m_Lp[tetramerStart[threadID]];
             errorCodes[threadID] = m_tgtDBIf.queryProteinSetGPPairs(
-                this->refProteinSet(), tetramerStart[threadID], tetramerEnd[threadID],
-                threadIter, &tgtFCount);
+                this->refProteinSet(), tetramerStart[threadID],
+                tetramerEnd[threadID], threadIter, &tgtFCount);
             //
             threadIter += tgtFCount;
             errorCodes[threadID] = m_qryDBIf.queryProteinSetGPPairs(
-                this->refProteinSet(), tetramerStart[threadID], tetramerEnd[threadID],
-                threadIter, &qryFCount);
+                this->refProteinSet(), tetramerStart[threadID],
+                tetramerEnd[threadID], threadIter, &qryFCount);
             //
             // Increment the genome ids of query db with target Genome Size
             for (auto qIter = threadIter; qIter != threadIter + qryFCount;

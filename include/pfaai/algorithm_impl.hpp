@@ -191,22 +191,7 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
         }
     }
 
-    void print_e() {
-        std::cout << "E array : " << std::endl;
-        for (int i = 0; i < c_pE.E.size(); i++) {
-            fmt::print("{}", c_pE.E[i]);
-        }
-        std::cout << std::endl << std::endl;
-
-        std::cout << "Genome Pair Extents:" << std::endl;
-        for (int i = 0; i < m_genomePairEStartIndex.size(); i++) {
-            fmt::print("GP {} : [{}, {}]", c_pE.E[i],
-                       m_genomePairEStartIndex[i], m_genomePairEEndIndex[i]);
-        }
-        std::cout << std::endl << std::endl;
-    }
-
-    void computeEBlockJAC(const int& threadID) {
+    void computeEBlockJAC(int threadID) {
         for (int genomePair = m_threadGPStarts[threadID];
              genomePair <= m_threadGPEnds[threadID]; genomePair++) {
             int currGenomeA = m_JAC[genomePair].genomeA;
@@ -310,6 +295,22 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
         computeJAC();
         computeAJI();
         return PFAAI_OK;
+    }
+
+    void print_e() const {
+        std::cout << "E array : " << std::endl;
+        for (int i = 0; i < c_pE.E.size(); i++) {
+            fmt::print("{}", c_pE.E[i]);
+        }
+        std::cout << std::endl << std::endl;
+
+        std::cout << "Genome Pair Extents:" << std::endl;
+        for (int i = 0; i < m_genomePairEStartIndex.size(); i++) {
+            fmt::print("i {} :: GP {} : [{}, {}] \n", i,
+                       c_pE.E[m_genomePairEStartIndex[i]],
+                       m_genomePairEStartIndex[i], m_genomePairEEndIndex[i]);
+        }
+        std::cout << std::endl << std::endl;
     }
 };
 
