@@ -70,7 +70,8 @@ class ParFAAIData : public DefaultDataStructInterface<IdType> {
         return qryId < tgtId;
     }
     inline IdType countGenomePairs(IdType nQry, IdType nTgt) const {
-        return (nQry * nTgt) + (nQry * (nQry - 1) / 2);
+        assert(nTgt == 0);
+        return (nQry * (nQry - 1) / 2);
     }
 
     // Construction functions
@@ -99,6 +100,7 @@ class ParFAAIData : public DefaultDataStructInterface<IdType> {
         }
         // Parallel prefix sum on Lc to construct Lp
         DSHelper::parallelPrefixSum(this->m_Lc, this->m_Lp);
+        assert(this->m_Lp.back() > 0);
         this->m_initFlags["L"] = true;
         return this->m_errorCode;
     }

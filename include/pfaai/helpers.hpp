@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <numeric>
 #include <omp.h>
 #include <string>
 #include <vector>
@@ -126,11 +127,10 @@ struct DataStructHelper {
                                          tetramerStart, tetramerEnd);
             }
             thTimers[threadID].reset();
+            IdType fBeginOffset = dataStruct.refLp()[tetramerStart[threadID]];
             errCodes[threadID] = dbIf.queryProteinSetGPPairs(
                 dataStruct.refProteinSet(), tetramerStart[threadID],
-                tetramerEnd[threadID],
-                F.begin() + dataStruct.refLp()[tetramerStart[threadID]],
-                &fCount);
+                tetramerEnd[threadID], F.begin() + fBeginOffset, &fCount);
             thTimers[threadID].elapsed();
         }
         if (std::any_of(errCodes.begin(), errCodes.end(),
@@ -204,7 +204,7 @@ struct DataStructHelper {
                 }
             }
 
-            // int leftBoundary = startIndexInF;
+            int leftBoundary = startIndexInF;
             int currProteinID = dsIfx.refF()[startIndexInF].first;
             int rightBoundary = startIndexInF;
             int nQryOcc = 0, nTgtOcc = 0;
@@ -222,10 +222,11 @@ struct DataStructHelper {
                 } else {
                     // int n = rightBoundary - leftBoundary;
                     // nTetraTuples += n * (n - 1) / 2;
+                    // assert(rightBoundary - leftBoundary == nQryOcc);
                     int nbdTuples = dsIfx.countGenomePairs(nQryOcc, nTgtOcc);
                     nTetraTuples += nbdTuples;
                     //
-                    // leftBoundary = rightBoundary;
+                    leftBoundary = rightBoundary;
                     currProteinID = dsIfx.refF()[rightBoundary].first;
                     nQryOcc = nTgtOcc = 0;
                 }
@@ -236,6 +237,7 @@ struct DataStructHelper {
             // calculation for currProteinID is not done yet
             // int n = rightBoundary - leftBoundary;
             // nTetraTuples += n * (n - 1) / 2;
+            // assert(rightBoundary - leftBoundary == nQryOcc);
             int nbdTuples = dsIfx.countGenomePairs(nQryOcc, nTgtOcc);
             nTetraTuples += nbdTuples;
         }
@@ -279,9 +281,14 @@ struct DataStructHelper {
                 if (c_F[rightBoundary].first == currProteinID) {
                     rightBoundary++;
                 } else {
+                    assert(std::is_sorted(
+                        c_F.begin() + leftBoundary, c_F.begin() + rightBoundary,
+                        [](const IdPairType& a, const IdPairType& b) {
+                            return a.second < b.second;
+                        }));
                     for (int i = leftBoundary; i < rightBoundary; i++) {
                         int genomeA_ID = c_F[i].second;
-                        if (!dsIfx.isQryGenome(genomeA_ID))
+                        if (dsIfx.isQryGenome(genomeA_ID) == false)
                             continue;
                         for (int j = leftBoundary; j < rightBoundary; j++) {
                             IdType genomeB_ID = c_F[j].second;
@@ -309,7 +316,7 @@ struct DataStructHelper {
             // calculation for currProteinID is not done yet
             for (IdType i = leftBoundary; i < rightBoundary; i++) {
                 IdType genomeA_ID = c_F[i].second;
-                if (!dsIfx.isQryGenome(genomeA_ID))
+                if (dsIfx.isQryGenome(genomeA_ID) == false)
                     continue;
                 for (IdType j = leftBoundary; j < rightBoundary; j++) {
                     IdType genomeB_ID = c_F[j].second;

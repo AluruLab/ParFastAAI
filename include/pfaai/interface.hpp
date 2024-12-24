@@ -2,14 +2,15 @@
 #define PFAAI_INTERFACE_HPP
 
 #include <cassert>
-#include <fmt/format.h>
 #include <iostream>
-#include <omp.h>
 #include <ostream>
-#include <sqlite3.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <fmt/format.h>
+#include <omp.h>
+#include <sqlite3.h>
 
 #include "pfaai/utils.hpp"
 
