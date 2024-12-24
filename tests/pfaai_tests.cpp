@@ -22,6 +22,7 @@ using IdMatType = DMatrix<IdType>;
 using SQLiteIfT = SQLiteInterface<IdType, DatabaseNames>;
 using PFImpl = ParFAAIImpl<IdType, ValueType>;
 using PFDataT = ParFAAIData<IdType>;
+using PFQSubDataT = ParFAAIQSubData<IdType>;
 
 static constexpr char G_DB_PATH[] = "data/modified_xantho_fastaai2.db";
 static constexpr char G_DB_SUBSET1_PATH[] = "data/xdb_subset1.db";
@@ -71,6 +72,10 @@ static constexpr char REF_SUBSET2_SRTD_E_ARRAY[] =
     "data/xdb_subset2_sorted_e_array.bin";
 static constexpr char REF_SUBSET2_JAC_DATA[] = "data/xdb_subset2_jac.bin";
 static constexpr char REF_SUBSET2_AJI_DATA[] = "data/xdb_subset2_aji.bin";
+
+static constexpr char DATA_QSUB_TEST_INPUT[] = "data/qsub_test_input.txt";
+static constexpr char REF_QSUB_JAC_DATA[] = "data/xdb_qry_subset_jac.bin";
+static constexpr char REF_QSUB_AJI_DATA[] = "data/xdb_qry_subset_aji.bin";
 
 TEST_CASE("Query Genome Metadata", "[db_meta_data]") {
     SQLiteIfT sqlt_if(G_DB_PATH);
@@ -364,7 +369,7 @@ TEST_CASE("Subset 1 Implementation Test", "[compute_subset1_JAC_AJI]") {
     ParFAAIImpl<IdType, double> pfaaiImpl(pfaaiData);
     pfaaiImpl.computeJAC();
     std::vector<JACTuple<IdType, double>> JAC = pfaaiImpl.getJAC(), refJAC;
-    
+
     {
         std::ifstream tcx(REF_SUBSET1_JAC_DATA, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
@@ -376,7 +381,6 @@ TEST_CASE("Subset 1 Implementation Test", "[compute_subset1_JAC_AJI]") {
     //
     pfaaiImpl.computeAJI();
     std::vector<double> AJI = pfaaiImpl.getAJI(), refAJI;
-    
     {
         std::ifstream tcx(REF_SUBSET1_AJI_DATA, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
@@ -387,7 +391,6 @@ TEST_CASE("Subset 1 Implementation Test", "[compute_subset1_JAC_AJI]") {
     //    REQUIRE(refAJI[i] == AJI[i]);
 }
 
-
 TEST_CASE("Subset 2 Implementation Test", "[compute_subset2_JAC_AJI]") {
     SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET2_PATH);
     DBMetaData dbMeta;
@@ -396,12 +399,10 @@ TEST_CASE("Subset 2 Implementation Test", "[compute_subset2_JAC_AJI]") {
     PFDataT pfaaiData(sqlt_if, dbMeta);
     pfaaiData.construct();
     //
-
-    //
     ParFAAIImpl<IdType, double> pfaaiImpl(pfaaiData);
     pfaaiImpl.computeJAC();
     std::vector<JACTuple<IdType, double>> JAC = pfaaiImpl.getJAC(), refJAC;
-    
+
     {
         std::ifstream tcx(REF_SUBSET2_JAC_DATA, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
@@ -413,7 +414,7 @@ TEST_CASE("Subset 2 Implementation Test", "[compute_subset2_JAC_AJI]") {
     //
     pfaaiImpl.computeAJI();
     std::vector<double> AJI = pfaaiImpl.getAJI(), refAJI;
-    
+
     {
         std::ifstream tcx(REF_SUBSET2_AJI_DATA, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
@@ -422,4 +423,46 @@ TEST_CASE("Subset 2 Implementation Test", "[compute_subset2_JAC_AJI]") {
     REQUIRE(refAJI == AJI);
     // for(auto i = 0; i < refAJI.size(); i++)
     //    REQUIRE(refAJI[i] == AJI[i]);
+}
+
+TEST_CASE("PF Query Subset Test", "[pfaai_query_subset]") {
+    SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
+    DBMetaData dbMeta;
+    sqlt_if.queryMetaData(dbMeta);
+    //
+    std::vector<std::string> qryGenomeSet;
+    std::ifstream in_stream(DATA_QSUB_TEST_INPUT);
+    std::string str;
+    while (in_stream >> str) {
+        qryGenomeSet.push_back(str);
+    }
+    //
+    PFQSubDataT pfaaiData(sqlt_if, dbMeta, qryGenomeSet);
+    int errorCode = pfaaiData.construct();
+
+    sqlt_if.closeDB();
+    //
+    assert(errorCode == PFAAI_OK);
+    // Run parallel Fast AAI algorithm
+    PFImpl pfaaiImpl(pfaaiData);
+    pfaaiImpl.computeJAC();
+    std::vector<JACTuple<IdType, double>> JAC = pfaaiImpl.getJAC(), refJAC;
+    {
+        std::ifstream tcx(REF_QSUB_JAC_DATA, std::ios::binary);
+        cereal::BinaryInputArchive iarchive(tcx);
+        iarchive(refJAC);
+    }
+    REQUIRE(refJAC == JAC);
+    // for(auto i = 0; i < JAC.size(); i++)
+    //    REQUIRE(refJAC[i] == JAC[i]);
+    //
+    pfaaiImpl.computeAJI();
+    std::vector<double> AJI = pfaaiImpl.getAJI(), refAJI;
+    
+    {
+        std::ifstream tcx(REF_QSUB_AJI_DATA, std::ios::binary);
+        cereal::BinaryInputArchive iarchive(tcx);
+        iarchive(refAJI);
+    }
+    REQUIRE(refAJI == AJI);
 }

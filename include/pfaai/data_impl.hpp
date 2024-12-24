@@ -95,7 +95,7 @@ class ParFAAIData : public DefaultDataStructInterface<IdType> {
     PFAAI_ERROR_CODE constructL() {
         this->m_errorCode = DSHelper::constructLc(*this, m_DBIf, this->m_Lc);
         if (this->m_errorCode != PFAAI_OK) {
-            std::cout << "Lc and Lp fail to Initialize" << std::endl;
+            std::cerr << "Lc and Lp fail to Initialize" << std::endl;
             return (this->m_errorCode = PFAAI_ERR_CONSTRUCT);
         }
         // Parallel prefix sum on Lc to construct Lp
@@ -108,7 +108,7 @@ class ParFAAIData : public DefaultDataStructInterface<IdType> {
     PFAAI_ERROR_CODE constructF() {
         assert(this->refLp().back() > 0);
         if (this->m_errorCode != PFAAI_OK) {
-            std::cout << "Lc and Lp are not Initialized" << std::endl;
+            std::cerr << "Lc and Lp are not Initialized" << std::endl;
             return (this->m_errorCode = PFAAI_ERR_CONSTRUCT);
         }
         return (this->m_errorCode =
@@ -159,11 +159,10 @@ class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
   public:
     explicit ParFAAIQSubData(const DBIfx& srcDbif, const DBMetaData& dbMeta,
                              const std::vector<std::string>& qryGenomeSet,
-                             const std::vector<std::string>& protSet,
                              float slack = Parent::DEFAULT_SLACK_PCT)
-        : Parent(protSet, protSet.size(), dbMeta.genomeSet.size(), slack),
+        : Parent(dbMeta.proteinSet, dbMeta.proteinSet.size(), dbMeta.genomeSet.size(), slack),
           m_DBIf(srcDbif), m_dbMeta(dbMeta), m_qryGenomeSet(qryGenomeSet),
-          m_genomeSet(dbMeta.genomeSet), m_nProteins(protSet.size()),
+          m_genomeSet(dbMeta.genomeSet), m_nProteins(dbMeta.proteinSet.size()),
           m_nGenomes(m_genomeSet.size()), m_nQryGenomes(m_qryGenomeSet.size()),
           m_nTgtGenomes(m_nGenomes - m_nQryGenomes),
           m_genomeIndexMap(m_nGenomes), m_qryIndicator(m_nGenomes, false),
@@ -194,10 +193,10 @@ class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
         }
 
         //
-        std::cout << (qSet.find(m_genomeSet[0]) != qSet.end())
-                  << fmt::format("[{}]", fmt::join(m_qryGenomeSet, ", "))
-                  << fmt::format("[{}]", fmt::join(m_qryIndicator, ", "))
-                  << std::endl;
+        // std::cout << (qSet.find(m_genomeSet[0]) != qSet.end())
+        //           << fmt::format("[{}]", fmt::join(m_qryGenomeSet, ", "))
+        //           << fmt::format("[{}]", fmt::join(m_qryIndicator, ", "))
+        //           << std::endl;
     }
 
     virtual ~ParFAAIQSubData() {}
@@ -506,7 +505,7 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
         // TODO(x): construction
         assert(this->m_Lp.back() > 0);
         if (this->m_initFlags["L"] == false) {
-            std::cout << "Lc and Lp are not Initialized" << std::endl;
+            std::cerr << "Lc and Lp are not Initialized" << std::endl;
             return PFAAI_ERR_CONSTRUCT;
         }
         //

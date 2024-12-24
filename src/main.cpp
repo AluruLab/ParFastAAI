@@ -46,18 +46,20 @@ struct AppParams {
         app.add_option("path_to_query_db", pathToQryDatabase,
                        "Path to the Query Database")
             ->check(CLI::ExistingFile);
+        app.add_option("path_to_output_file", pathToOutputFile,
+                       "Path to output csv file.");
         app.add_option("-t,--target", pathToTgtDatabase,
-                       "Path to the Target Database [Optional, Same as Query, "
-                       "if not given]")
+                       "Path to the Target Database [Optional (default: Same "
+                       "as the Query DB)] ")
             ->check(CLI::ExistingFile);
-        app.add_option("-s,--separator", outFieldSeparator,
-                       "Field Separator in the output file")
+        app.add_option(
+               "-s,--separator", outFieldSeparator,
+               "Field Separator in the output file [Optional (default: ,)].")
             ->capture_default_str();
-        app.add_option("-q,--query_subset", pathToQrySubsetFile,
-                       "Path to output csv file")
+        app.add_option(
+               "-q,--query_subset", pathToQrySubsetFile,
+               "Path to Query List (Should be subset of genomoes in input DB.)")
             ->check(CLI::ExistingFile);
-        app.add_option("-o,--output_file", pathToOutputFile,
-                       "Path to output csv file");
     }
 
     void print() const {
@@ -95,6 +97,12 @@ struct AppParams {
         // std::copy(v.begin(), v.end(),
         //          std::ostream_iterator<std::string>(std::cout, ","));
     }
+
+    void print_query_genomes() {
+        std::cout << "Query Set: [" << qryGenomeSet.size() << ", "
+                  << fmt::format("({})", fmt::join(qryGenomeSet, ", ")) << "]"
+                  << std::endl;
+    }
 };
 
 void print_aji(const PFDSInterface& dsif,
@@ -117,16 +125,19 @@ void printOutput(const PFDSInterface& pfdata, const PFImpl& impl,
     const std::vector<PFImpl::JACType>& cJAC = impl.getJAC();
     const std::vector<ValueType>& cAJI = impl.getAJI();
 
-    std::cout << nQryGenomes << " " << nTgtGeneomes << std::endl;
+    fmt::print("Writing output with {} query genomes and {} target genomes. \n",
+               nQryGenomes, nTgtGeneomes);
     DMatrix<ValueType> ajiMatrix(nQryGenomes, nTgtGeneomes, 0.0);
     for (std::size_t i = 0; i < cJAC.size(); i++) {
-        IdType ga = pfdata.mapQueryId(cJAC[i].genomeA);
-        IdType gb = pfdata.mapTargetId(cJAC[i].genomeB);
-        ajiMatrix(ga, gb) = cAJI[i];
+        IdType fga = cJAC[i].genomeA;
+        IdType fgb = cJAC[i].genomeB;
+        ajiMatrix(pfdata.mapQueryId(fga), pfdata.mapTargetId(fgb)) = cAJI[i];
         //
-        // Other diagonal if present
-        if (gb < nQryGenomes && ga < nTgtGeneomes)
-            ajiMatrix(gb, ga) = cAJI[i];
+        // Other side of the diagonal if genomeB is also a query genome
+        if (pfdata.isQryGenome(cJAC[i].genomeB)) {
+            ajiMatrix(pfdata.mapQueryId(fgb), pfdata.mapTargetId(fga)) =
+                cAJI[i];
+        }
     }
 
     // std::ofstream ofx(pathToOutputFile);
@@ -189,17 +200,12 @@ int parallel_subset_fastaai(const AppParams& pfaaiAppArgs) {
     }
     DBMetaData dbMeta;
     sqltIf.queryMetaData(dbMeta);
-    std::cout << "{" << dbMeta.genomeSet.size() << ", "
-              << fmt::format("[{}]", fmt::join(dbMeta.genomeSet, ", ")) << "}"
-              << std::endl;
     //
-    PFQSubData pfaaiData(sqltIf, dbMeta, pfaaiAppArgs.qryGenomeSet,
-                         dbMeta.proteinSet);
+    PFQSubData pfaaiData(sqltIf, dbMeta, pfaaiAppArgs.qryGenomeSet);
     // PHASE 1: Construction of the data structures
     PFAAI_ERROR_CODE pfErrorCode = pfaaiData.construct();
     sqltIf.closeDB();
-    std::cout << "{" << pfaaiData.refF().size() << ", "
-              << pfaaiData.refE().E.size() << "}" << std::endl;
+    //
     if (errorCode != PFAAI_OK) {
         return pfErrorCode;
     }
@@ -280,10 +286,9 @@ int main(int argc, char* argv[]) {
             return parallel_fastaai(pfaaiAppArgs);
         } else {
             pfaaiAppArgs.load_query_genomes();
-            std::cout << "{" << pfaaiAppArgs.qryGenomeSet.size() << ", "
-                      << fmt::format("[{}]",
-                                     fmt::join(pfaaiAppArgs.qryGenomeSet, ", "))
-                      << "}" << std::endl;
+#ifndef NDEBUG
+            pfaaiAppArgs.print_query_genomes();
+#endif
             return parallel_subset_fastaai(pfaaiAppArgs);
         }
     } else {
