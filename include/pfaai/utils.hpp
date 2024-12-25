@@ -5,11 +5,13 @@
 
 #ifndef UTILS_HPP
 #define UTILS_HPP
+#include <chrono>  // NOLINT
 #include <iomanip>
-#include <string>
 #include <iostream>
-#include <chrono>   // NOLINT
-#include <ratio>    // NOLINT
+#include <limits>
+#include <ratio>  // NOLINT
+#include <string>
+#include <vector>
 
 /// macros for block decomposition
 #define BLOCK_LOW(i, p, n) ((i * n) / p)
@@ -42,6 +44,39 @@ static inline T block_owner(const SizeType& j, const SizeType& n,
     return (((nproc) * ((j) + 1) - 1) / (n));
 }
 
+//
+template <typename IT>
+inline std::vector<IT>
+distribute_bags_of_tasks(int nproc, IT ntasks, const std::vector<IT>& bag_sizes,
+                         float slack,
+                         std::vector<IT>& bag_starts,  // NOLINT
+                         std::vector<IT>& bag_ends) {  // NOLINT
+    std::vector<IT> ntasks_dist(nproc, 0);
+    int ntasks_per_proc = (static_cast<float>(ntasks) / nproc) * (1 + slack);
+    bag_starts.resize(nproc, -1);
+    bag_ends.resize(nproc, -1);
+    IT n_bags = IT(bag_sizes.size());
+
+    for (IT bag_id = 0, pid = 0; bag_id < n_bags; bag_id++) {
+        IT ntasks_bag = bag_sizes[bag_id];
+        if (ntasks_dist[pid] + ntasks_bag <= ntasks_per_proc ||
+            pid == nproc - 1) {
+            ntasks_dist[pid] += ntasks_bag;
+            if (bag_starts[pid] == -1) {
+                bag_starts[pid] = bag_id;
+            }
+            bag_ends[pid] = bag_id;
+        } else {
+            // Move to the next thread and assign the task there
+            pid++;
+            ntasks_dist[pid] += ntasks_bag;
+            bag_starts[pid] = bag_id;
+            bag_ends[pid] = bag_id;
+        }
+    }
+    return ntasks_dist;
+}
+
 // timer definition
 //
 
@@ -56,37 +91,95 @@ template <typename duration> class timer_impl {
 
     timer_impl() : start(std::chrono::steady_clock::now()), _total_elapsed(0) {}
 
-    inline void accumulate() { _total_elapsed += elapsed(); }
+    inline timer_impl<duration>& accumulate() {
+        _total_elapsed += _elapsed_time;
+        return *this;
+    }
 
-    inline void reset() { start = std::chrono::steady_clock::now(); }
+    inline timer_impl<duration>& reset() {
+        start = std::chrono::steady_clock::now();
+        return *this;
+    }
 
-    typename duration::rep elapsed() {
+    inline timer_impl<duration>& elapsed() {
         std::chrono::steady_clock::time_point stop =
             std::chrono::steady_clock::now();
         _elapsed_time = duration(stop - start).count();
-        return _elapsed_time;
+        return *this;
     }
 
     inline typename duration::rep elapsed_to_mins() const {
-      return elapsed_to_seconds()/60.0;
+        return elapsed_to_seconds() / 60.0;
     }
 
     inline typename duration::rep elapsed_to_seconds() const {
-      return _elapsed_time/1000.0;
+        return _elapsed_time / 1000.0;
     }
 
-    void print_elapsed(const std::string prefix, std::ostream& ox) const {
-	    ox << prefix;
+    void print(const std::string prefix, std::ostream& ox,
+               bool line_end = true) const {
+        ox << prefix;
         ox.precision(3);
-        ox << std::setw(10) << _elapsed_time << " ms (" ;
+        ox << std::setw(10) << _elapsed_time << " ms (";
         ox.precision(4);
-        ox << std::setw(10) << elapsed_to_seconds() << " sec/" ;
+        ox << std::setw(10) << elapsed_to_seconds() << " sec/";
         ox.precision(4);
-        ox << std::setw(10) << elapsed_to_mins() << " min)." ;
-        ox << std::endl;
+        ox << std::setw(10) << elapsed_to_mins() << " min).";
+        if (line_end)
+            ox << std::endl;
+    }
+
+    void measure_accumulate_print(const std::string prefix, std::ostream& ox,
+                                  bool line_end = true) {
+        elapsed().accumulate().print(prefix, ox, line_end);
     }
 };
 
 using timer = timer_impl<std::chrono::duration<double, std::milli>>;
+
+template <typename TimerT>
+void printThreadTimes(const std::string& prt_prefix,
+                      const std::vector<TimerT>& threadTimers) {
+    for (int threadID = 0; threadID < threadTimers.size(); threadID++) {
+        std::cout << "Thread " << threadID;
+        threadTimers[threadID].print_elapsed(prt_prefix, std::cout);
+    }
+}
+
+//
+// Compute Memory Usage
+//
+#include <sys/resource.h>
+template <typename T> T get_mem_usage() {
+    struct rusage usage;
+    int ret;
+    ret = getrusage(RUSAGE_SELF, &usage);
+    if (ret != 0) {
+        return std::numeric_limits<T>::max();
+    }
+    return T(usage.ru_maxrss);  // in KB
+}
+
+template <typename T>
+void print_memory_usage(const std::string& prt_prefix, std::ostream& ox) {
+    T used_mem = get_mem_usage<T>();
+    ox << prt_prefix;
+    if (used_mem < std::numeric_limits<T>::max()) {
+        ox.precision(2);
+        ox << std::setw(10) << used_mem << " KB (";
+        ox.precision(2);
+        ox << std::setw(10) << used_mem / 1024 << " MB/";
+        ox.precision(2);
+        ox << std::setw(10) << used_mem / (1024 * 1024) << " GB).";
+    } else {
+        ox << " Mem usage returned error ";
+    }
+    ox << std::endl;
+}
+#define PRINT_RUNTIME_MEMUSED(r_timer, sprefix, ostream)                       \
+    {                                                                          \
+        r_timer.measure_accumulate_print(sprefix, ostream, false);             \
+        print_memory_usage<uint64_t>("; ", std::cout);                         \
+    }
 
 #endif  // !UTILS_HPP
