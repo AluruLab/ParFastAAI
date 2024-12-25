@@ -217,6 +217,7 @@ template <typename IdType> struct EParData {
 struct DBMetaData {
     std::vector<std::string> proteinSet;
     std::vector<std::string> genomeSet;
+    std::vector<std::string> attGenomeSet;
 };
 
 //
@@ -336,8 +337,6 @@ class DataStructInterface {
     virtual bool isQryGenome(IdType genome) const = 0;
     virtual bool isValidPair(IdType qry, IdType tgt) const = 0;
     virtual IdType countGenomePairs(IdType nQry, IdType nTgt) const = 0;
-    //
-    // print functions
     //
     // Construction functions
     virtual std::vector<JACType> initJAC() const = 0;

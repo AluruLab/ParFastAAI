@@ -47,7 +47,7 @@ class ParFAAIData : public DefaultDataStructInterface<IdType> {
 
     inline virtual const std::vector<std::string>& refQuerySet() const {
         return m_genomeSet;
-    } 
+    }
     inline virtual const std::vector<std::string>& refTargetSet() const {
         return m_genomeSet;
     }
@@ -160,7 +160,8 @@ class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
     explicit ParFAAIQSubData(const DBIfx& srcDbif, const DBMetaData& dbMeta,
                              const std::vector<std::string>& qryGenomeSet,
                              float slack = Parent::DEFAULT_SLACK_PCT)
-        : Parent(dbMeta.proteinSet, dbMeta.proteinSet.size(), dbMeta.genomeSet.size(), slack),
+        : Parent(dbMeta.proteinSet, dbMeta.proteinSet.size(),
+                 dbMeta.genomeSet.size(), slack),
           m_DBIf(srcDbif), m_dbMeta(dbMeta), m_qryGenomeSet(qryGenomeSet),
           m_genomeSet(dbMeta.genomeSet), m_nProteins(dbMeta.proteinSet.size()),
           m_nGenomes(m_genomeSet.size()), m_nQryGenomes(m_qryGenomeSet.size()),
@@ -203,7 +204,7 @@ class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
 
     inline virtual const std::vector<std::string>& refQuerySet() const {
         return m_qryGenomeSet;
-    } 
+    }
     inline virtual const std::vector<std::string>& refTargetSet() const {
         return m_genomeSet;
     }
@@ -306,57 +307,6 @@ class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
     }
 };
 
-// template <typename IdType> struct QTGenomeSetData {
-//     //
-//     const std::vector<std::string>&c_qryGenomes, c_tgtGenomes;
-//     //
-//     // Flags is 1 if the genome is common
-//     std::vector<bool> m_qryFlag, m_tgtFlag;
-//     //
-//     // Output matrix is |Q| x |T|
-//     // Following
-//     std::unordered_set<std::string> m_intersectSet, m_unionSet;
-//
-//     explicit QTGenomeSetData(const std::vector<std::string>& qryGenomes,
-//                              const std::vector<std::string>& tgtGenomes)
-//         : c_qryGenomes(qryGenomes), c_tgtGenomes(tgtGenomes),
-//           m_qryFlag(qryGenomes.size(), 0), m_tgtFlag(tgtGenomes.size(), 0),
-//           m_intersectSet(std::min(qryGenomes.size(), tgtGenomes.size())),
-//           m_unionSet(std::max(qryGenomes.size(), tgtGenomes.size())) {
-//         // Map for target genes
-//         std::unordered_map<std::string, IdType> tgtIdMap(tgtGenomes.size());
-//         ;
-//         // First, add all the target genes to union map
-//         // Assuming all these genome ids are unique
-//         for (IdType jx = 0; jx < IdType(tgtGenomes.size()); jx++) {
-//             const std::string& gx = tgtGenomes[jx];
-//             tgtIdMap[gx] = jx;
-//             m_unionSet.insert(gx);
-//         }
-//
-//         // Query set
-//         for (IdType jx = 0; jx < IdType(qryGenomes.size()); jx++) {
-//             const std::string& gx = qryGenomes[jx];
-//             auto gitr = tgtIdMap.find(gx);
-//             if (gitr != tgtIdMap.end()) {
-//                 m_intersectSet.insert(gx);
-//             } else {
-//                 m_unionSet.insert(gx);
-//                 // For a row in the matrix, if the row belongs to a gene in
-//                 //    intersection set, then
-//                 //     - Set intersection flags
-//                 m_tgtFlag[gitr->second] = true;
-//                 m_qryFlag[jx] = true;
-//             }
-//         }
-//     }
-//
-//     inline IdType genomePairToJACIndex(IdType qryGenome,
-//                                        IdType tgtGenome) const {
-//         return qryGenome * c_qryGenomes.size() + tgtGenome;
-//     }
-// };
-
 template <typename IdType>
 class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
 
@@ -371,63 +321,67 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
 
   private:
     // Inputs
-    const DBIfx &m_qryDBIf, &m_tgtDBIf;
-    const DBMetaData &m_qryDBMeta, &m_tgtDBMeta;
-    //
-    // QTGenomeSetData<IdType> m_qtGenomeSetData;
+    const DBIfx& m_qtDBIf;
+    const DBMetaData& m_dbMeta;
     //
     IdType m_nSharedProteins;
-    IdType m_nUnionSize;
+    IdType m_nUnionGenomes;
     std::vector<bool> m_qryIndicator;
-    // Data structure
+    std::vector<IdType> m_genomeIndexMap;
     //
-    IdMatrixType m_qryT, m_tgtT;
-    std::vector<IdPairType> m_F;
-    EParData<IdType> m_pE;
-    std::vector<IdType> m_queryIndexMap, m_targetIndexMap;
+    // Data structures
+    // IdMatrixType m_qryT, m_tgtT;
+    // std::vector<IdType> m_qryLc, m_tgtLc;
+    // std::vector<IdPairType> m_F;
+    // EParData<IdType> m_pE;
 
   public:
-    explicit ParFAAIQryTgtData(const DBIfx& qryDbif, const DBIfx& tgtDbif,
-                               const DBMetaData& qryDbMeta,
-                               const DBMetaData& tgtDbMeta,
+    explicit ParFAAIQryTgtData(const DBIfx& qtDBIf, const DBMetaData& dbMeta,
                                const std::vector<std::string>& protSet,
                                float slack = Parent::DEFAULT_SLACK_PCT)
-        : Parent(protSet, protSet.size(),
-                 qryDbMeta.genomeSet.size() + tgtDbMeta.genomeSet.size(),
+        : Parent(protSet, dbMeta.attGenomeSet.size(), dbMeta.genomeSet.size(),
                  slack),
-          m_qryDBIf(qryDbif), m_tgtDBIf(tgtDbif), m_qryDBMeta(qryDbMeta),
-          m_tgtDBMeta(tgtDbMeta), m_nSharedProteins(protSet.size()),
-          m_nUnionSize(m_qryDBMeta.genomeSet.size() +
-                       m_tgtDBMeta.genomeSet.size()),
-          m_qryT(m_nSharedProteins, m_qryDBMeta.genomeSet.size()),
-          m_tgtT(m_nSharedProteins, m_tgtDBMeta.genomeSet.size()) {
-
-        // TODO(x): Initialize qry inicators, lookup, index maps
+          m_qtDBIf(qtDBIf), m_dbMeta(dbMeta), m_nSharedProteins(protSet.size()),
+          m_nUnionGenomes(dbMeta.genomeSet.size() + dbMeta.attGenomeSet.size()),
+          m_qryIndicator(m_nUnionGenomes, false),
+          m_genomeIndexMap(m_nUnionGenomes, -1) {
+        // Initialize query indicators,  index maps
+        IdType nQryGenomes = m_dbMeta.attGenomeSet.size();
+        IdType nTgtGenomes = m_dbMeta.genomeSet.size();
+        for (IdType ix = 0; ix < nQryGenomes; ix++) {
+            m_qryIndicator[ix] = true;
+            m_genomeIndexMap[ix] = ix;
+        }
+        for (IdType ix = 0; ix < nTgtGenomes; ix++) {
+            m_qryIndicator[nQryGenomes + ix] = false;
+            m_genomeIndexMap[nQryGenomes + ix] = ix;
+        }
     }
 
     ~ParFAAIQryTgtData() {}
 
     inline virtual const std::vector<std::string>& refQuerySet() const {
-        return m_qryDBMeta.genomeSet;
-    } 
+        return m_dbMeta.attGenomeSet;
+    }
     inline virtual const std::vector<std::string>& refTargetSet() const {
-        return m_tgtDBMeta.genomeSet;
+        return m_dbMeta.genomeSet;
     }
 
     //
-    inline IdType qrySetSize() const { return m_qryDBMeta.genomeSet.size(); }
-    inline IdType tgtSetSize() const { return m_tgtDBMeta.genomeSet.size(); }
+    inline IdType qrySetSize() const { return m_dbMeta.attGenomeSet.size(); }
+    inline IdType tgtSetSize() const { return m_dbMeta.genomeSet.size(); }
     inline IdType nGenomePairs() const { return qrySetSize() * tgtSetSize(); }
-    inline IdType nUnionGenomes() const { return m_nUnionSize; }
+    inline IdType nUnionGenomes() const { return m_nUnionGenomes; }
 
     // Mapper/Validator functions
+    // TODO(x): Verify if these are okay
     inline IdType genomePairToIndex(IdType genomeA, IdType genomeB) const {
-        // TODO(x)
-        IdType tgtSize = m_tgtDBMeta.genomeSet.size();
-        return genomeA * tgtSize + genomeB;
+        return mapQueryId(genomeA) * tgtSetSize() + mapTargetId(genomeB);
     }
-    inline IdType mapQueryId(IdType qry) const { return m_queryIndexMap[qry]; }
-    inline IdType mapTargetId(IdType tgt) const { return m_targetIndexMap[tgt]; }
+    inline IdType mapQueryId(IdType qry) const { return m_genomeIndexMap[qry]; }
+    inline IdType mapTargetId(IdType tgt) const {
+        return m_genomeIndexMap[tgt];
+    }
     inline bool isQryGenome(IdType genome) const {
         return m_qryIndicator[genome];
     }
@@ -441,13 +395,12 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
     std::vector<JACType> initJAC() const {
         std::vector<JACType> jac_tuples(nGenomePairs());
         // Matrix is of size |Q| x |T|
-        //   add tgtSize for each
 #pragma omp parallel for
         for (std::size_t i = 0; i < jac_tuples.size(); i++) {
             //
-            IdType tgtSize = m_tgtDBMeta.genomeSet.size();
-            jac_tuples[i].genomeA = i / tgtSize;
-            jac_tuples[i].genomeB = i % tgtSize;
+            jac_tuples[i].genomeA = i / tgtSetSize();
+            // Shift target genome ids
+            jac_tuples[i].genomeB = qrySetSize() + (i % tgtSetSize());
         }
         return jac_tuples;
     }
@@ -455,111 +408,146 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
   public:
     //
     virtual PFAAI_ERROR_CODE constructT() {
-        this->m_errorCode = DSHelper::constructT(*this, m_qryDBIf, m_qryT);
-        if (this->m_errorCode != PFAAI_OK) {
-            return this->m_errorCode;
-        }
-        this->m_errorCode = DSHelper::constructT(*this, m_tgtDBIf, m_tgtT);
-        if (this->m_errorCode != PFAAI_OK) {
-            return this->m_errorCode;
-        }
+        // Older logic : T is constructed seperately for qry and target; merged
+        // TODO(x): modify this with  a  joint database query form 2 databases
         //
-        // merge qry T and tgt T
-        //  First target columns, followed by query data size
-#pragma omp parallel for
-        for (std::size_t i = 0; i < m_tgtT.rows(); i++) {
-#pragma omp parallel for
-            for (std::size_t j = 0; j < m_tgtT.cols(); j++) {
-                this->m_T(i, j) = m_tgtT(i, j);
-            }
-        }
-        //
-#pragma omp parallel for
-        for (std::size_t i = 0; i < m_qryT.rows(); i++) {
-#pragma omp parallel for
-            for (std::size_t j = 0; j < m_qryT.cols(); j++) {
-                this->m_T(i, m_tgtDBMeta.genomeSet.size() + j) = m_qryT(i, j);
-            }
-        }
+        //// T is constructed for query and target seperately and merged
+        // this->m_errorCode = DSHelper::constructT(*this, m_qryDBIf,
+        // m_qryT); if (this->m_errorCode != PFAAI_OK) {
+        //     return this->m_errorCode;
+        // }
+        // this->m_errorCode = DSHelper::constructT(*this, m_tgtDBIf,
+        // m_tgtT); if (this->m_errorCode != PFAAI_OK) {
+        //     return this->m_errorCode;
+        // }
+        //// Merge query T and target T
+        ////  First query columns, followed by target columns
+        // #pragma omp parallel for
+        //         for (std::size_t i = 0; i < m_qryT.rows(); i++) {
+        // #pragma omp parallel for
+        //             for (std::size_t j = 0; j < m_qryT.cols(); j++) {
+        //                 this->m_T(i, j) = m_qryT(i, j);
+        //             }
+        //         }
+        // #pragma omp parallel for
+        //         for (std::size_t i = 0; i < m_tgtT.rows(); i++) {
+        // #pragma omp parallel for
+        //             for (std::size_t j = 0; j < m_tgtT.cols(); j++) {
+        //                 this->m_T(i, j) = m_tgtT(i, j);
+        //             }
+        //         }
+        //         //
+        // #pragma omp parallel for
+        //         for (std::size_t i = 0; i < m_qryT.rows(); i++) {
+        // #pragma omp parallel for
+        //             for (std::size_t j = 0; j < m_qryT.cols(); j++) {
+        //                 this->m_T(i, refTargetSet().size() + j) = m_qryT(i,
+        //                 j);
+        //             }
+        //         }
+        //         this->m_initFlags["T"] = true;
         return this->m_errorCode;
     }
 
     //
     virtual PFAAI_ERROR_CODE constructL() {
-        //
-        // Tetramer counts  summed up from both target and query databases
-        this->m_errorCode = DSHelper::constructLc(*this, m_tgtDBIf, this->m_Lc);
-        if (this->m_errorCode != PFAAI_OK)
-            return this->m_errorCode;
-        //
-        this->m_errorCode = DSHelper::constructLc(*this, m_qryDBIf, this->m_Lc);
 
-        // Parallel prefix sum on Lc to construct Lp
-        DSHelper::parallelPrefixSum(this->m_Lc, this->m_Lp);
-        this->m_initFlags["L"] = true;
+        // Older logic : L is constructed seperately for qry and target; merged
+        // TODO(x): modify this with  a  joint database query form 2 databases
+        //
+        // // Tetramer counts is summed up from both query and target databases
+        // this->m_errorCode = DSHelper::constructLc(*this, m_tgtDBIf, m_qryLc);
+        // if (this->m_errorCode != PFAAI_OK)
+        //     return this->m_errorCode;
+        // //
+        // this->m_errorCode = DSHelper::constructLc(*this, m_qryDBIf, m_tgtLc);
+        // if (this->m_errorCode != PFAAI_OK)
+        //     return this->m_errorCode;
+
+        // #pragma omp parallel for
+        //         for (IdType ix = 0; ix < this->nTetramers(); ix++) {
+        //             this->m_Lc[ix] = this->m_qryLc[ix] + this->m_tgtLc[ix];
+        //         }
+        //         // Parallel prefix sum on Lc to build Lp
+        //         DSHelper::parallelPrefixSum(this->m_Lc, this->m_Lp);
+        //         this->m_initFlags["L"] = true;
 
         return this->m_errorCode;
     }
 
     virtual PFAAI_ERROR_CODE constructF() {
-        // TODO(x): construction
         assert(this->m_Lp.back() > 0);
         if (this->m_initFlags["L"] == false) {
             std::cerr << "Lc and Lp are not Initialized" << std::endl;
             return PFAAI_ERR_CONSTRUCT;
         }
+        // 
+        //  Had a logic with F constructed from each database seperately.
+        //  Realized doesn't work. Need to have a joint query from both the
+        //  databases.
         //
-        m_F.resize(this->m_Lp.back() + this->m_Lc.back(), IdPairType(-1, -1));
-        std::vector<IdType> tetramerStart, tetramerEnd;
-        std::vector<int> errorCodes;
-        std::vector<timer> threadTimers;
-#pragma omp parallel default(none)                                             \
-    shared(tetramerStart, tetramerEnd, errorCodes, threadTimers)
-        {
-            int nThreads = omp_get_num_threads();
-            int threadID = omp_get_thread_num();
-#pragma omp single
-            {
-                errorCodes.resize(nThreads, 0);
-                threadTimers.resize(nThreads);
-                distribute_bags_of_tasks(nThreads, IdType(m_F.size()),
-                                         this->m_Lc, this->m_slack,
-                                         tetramerStart, tetramerEnd);
-            }
-            //
-            threadTimers[threadID].reset();
-            IdType tgtFCount = 0, qryFCount = 0;
-            auto threadIter = m_F.begin() + this->m_Lp[tetramerStart[threadID]];
-            errorCodes[threadID] = m_tgtDBIf.queryProteinSetGPPairs(
-                this->refProteinSet(), tetramerStart[threadID],
-                tetramerEnd[threadID], threadIter, &tgtFCount);
-            //
-            threadIter += tgtFCount;
-            errorCodes[threadID] = m_qryDBIf.queryProteinSetGPPairs(
-                this->refProteinSet(), tetramerStart[threadID],
-                tetramerEnd[threadID], threadIter, &qryFCount);
-            //
-            // Increment the genome ids of query db with target Genome Size
-            for (auto qIter = threadIter; qIter != threadIter + qryFCount;
-                 qIter++) {
-                (*qIter).second += m_tgtDBMeta.genomeSet.size();
-            }
-            threadTimers[threadID].elapsed();
-        }
-        if (std::any_of(errorCodes.begin(), errorCodes.end(),
-                        [](int rc) { return rc != SQLITE_OK; }))
-            return (this->m_errorCode = PFAAI_ERR_CONSTRUCT);
         //
-        // printThreadTimes(" F construction : ", threadTimers);
-        //
-
+        //        this->m_F.resize(this->m_Lp.back() + this->m_Lc.back(),
+        //                         IdPairType(-1, -1));
+        //        std::vector<IdType> tetramerStart, tetramerEnd, ntSizes;
+        //        std::vector<int> errorCodes;
+        //        std::vector<timer> threadTimers;
+        // #pragma omp parallel default(none) 
+        //    shared(tetramerStart, tetramerEnd, errorCodes, threadTimers,
+        //    ntSizes)
+        //        {
+        //            int nThreads = omp_get_num_threads();
+        //            int threadID = omp_get_thread_num();
+        // #pragma omp single
+        //            {
+        //                errorCodes.resize(nThreads, 0);
+        //                threadTimers.resize(nThreads);
+        //                ntSizes = distribute_bags_of_tasks(
+        //                    nThreads, IdType(this->m_F.size()), this->m_Lc,
+        //                    this->m_slack, tetramerStart, tetramerEnd);
+        //            }
+        //            //
+        //            threadTimers[threadID].reset();
+        //            IdType tgtFCount = 0, qryFCount = 0;
+        //            auto threadIter =
+        //                this->m_F.begin() +
+        //                this->m_Lp[tetramerStart[threadID]];
+        //            errorCodes[threadID] = m_tgtDBIf.queryProteinSetGPPairs(
+        //                this->refProteinSet(), tetramerStart[threadID],
+        //                tetramerEnd[threadID], threadIter, &tgtFCount);
+        //            //
+        //            threadIter += tgtFCount;
+        //            errorCodes[threadID] = m_qryDBIf.queryProteinSetGPPairs(
+        //                this->refProteinSet(), tetramerStart[threadID],
+        //                tetramerEnd[threadID], threadIter, &qryFCount);
+        //            assert(qryFCount + tgtFCount == ntSizes[threadID]);
+        //            //
+        //            // Increment the genome ids of query db with target Genome
+        //            Size for (auto qIter = threadIter; qIter != threadIter +
+        //            qryFCount;
+        //                 qIter++) {
+        //                (*qIter).second += m_tgtDBMeta.genomeSet.size();
+        //            }
+        //            threadTimers[threadID].elapsed();
+        //        }
+        //        if (std::any_of(errorCodes.begin(), errorCodes.end(),
+        //                        [](int rc) { return rc != SQLITE_OK; }))
+        //            return (this->m_errorCode = PFAAI_ERR_CONSTRUCT);
+        //        //
+        //        // printThreadTimes(" F construction : ", threadTimers);
+        //        //
+        //        this->m_initFlags["F"] = true;
         return PFAAI_OK;
     }
 
     PFAAI_ERROR_CODE constructE() {
-        // TODO(x)::
-        return PFAAI_OK;
+        // this->m_errorCode = DSHelper::constructE(*this, this->m_pE);
+        // if (this->m_errorCode == PFAAI_OK)
+        //     this->m_initFlags["E"] = true;
+        return this->m_errorCode;
     }
+
+    // virtual PFAAI_ERROR_CODE construct() { constructL(); }
 };
 
 #endif  // !PAR_FAST_AAI_DATA_H

@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -23,6 +24,7 @@ using SQLiteIfT = SQLiteInterface<IdType, DatabaseNames>;
 using PFImpl = ParFAAIImpl<IdType, ValueType>;
 using PFDataT = ParFAAIData<IdType>;
 using PFQSubDataT = ParFAAIQSubData<IdType>;
+using PFQTData = ParFAAIQryTgtData<IdType>;
 
 static constexpr char G_DB_PATH[] = "data/modified_xantho_fastaai2.db";
 static constexpr char G_DB_SUBSET1_PATH[] = "data/xdb_subset1.db";
@@ -425,7 +427,7 @@ TEST_CASE("Subset 2 Implementation Test", "[compute_subset2_JAC_AJI]") {
     //    REQUIRE(refAJI[i] == AJI[i]);
 }
 
-TEST_CASE("PF Query Subset Test", "[pfaai_query_subset]") {
+TEST_CASE("PF Query Subset Test", "[query_subset]") {
     SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
     DBMetaData dbMeta;
     sqlt_if.queryMetaData(dbMeta);
@@ -458,7 +460,7 @@ TEST_CASE("PF Query Subset Test", "[pfaai_query_subset]") {
     //
     pfaaiImpl.computeAJI();
     std::vector<double> AJI = pfaaiImpl.getAJI(), refAJI;
-    
+
     {
         std::ifstream tcx(REF_QSUB_AJI_DATA, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
@@ -466,3 +468,34 @@ TEST_CASE("PF Query Subset Test", "[pfaai_query_subset]") {
     }
     REQUIRE(refAJI == AJI);
 }
+
+// TEST_CASE("PF QueryxTarget Test", "[qry_tgt]") {
+//     SQLiteInterface<IdType, DatabaseNames> qryDBIf(G_DB_SUBSET1_PATH);
+//     DBMetaData qryDbMeta;
+//     qryDBIf.queryMetaData(qryDbMeta);
+//     //
+//     SQLiteInterface<IdType, DatabaseNames> tgtDBIf(G_DB_SUBSET2_PATH);
+//     DBMetaData tgtDbMeta;
+//     tgtDBIf.queryMetaData(tgtDbMeta);
+// 
+//     //
+//     std::unordered_set<std::string> unionProtiens;
+//     std::vector<std::string> sharedProtiens;
+//     for (const auto& sx : qryDbMeta.proteinSet) {
+//         unionProtiens.insert(sx);
+//     }
+//     for (const auto& sx : tgtDbMeta.proteinSet) {
+//         if (unionProtiens.find(sx) != unionProtiens.end()) {
+//             sharedProtiens.emplace_back(sx);
+//         } else {
+//             unionProtiens.insert(sx);
+//         }
+//     }
+// 
+//     PFQTData pfaaiQTData(qryDBIf, tgtDBIf, qryDbMeta, tgtDbMeta,
+//                          sharedProtiens);
+//     // PHASE 1: Construction of the data structures
+//     PFAAI_ERROR_CODE pfErrorCode = pfaaiQTData.construct();
+//     qryDBIf.closeDB();
+//     tgtDBIf.closeDB();
+// }

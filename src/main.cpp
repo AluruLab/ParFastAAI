@@ -23,6 +23,7 @@ using ValueType = double;
 using IdPairType = DPair<IdType, IdType>;
 using IdMatrixType = DMatrix<IdType>;
 using SQLiteIfT = SQLiteInterface<IdType, DatabaseNames>;
+using QTSQLiteIfT = QTSQLiteInterface<IdType, DatabaseNames>;
 using PFImpl = ParFAAIImpl<IdType, ValueType>;
 
 using PFDSInterface = DefaultDataStructInterface<IdType>;
@@ -50,7 +51,7 @@ struct AppParams {
                        "Path to output csv file.");
         app.add_option("-t,--target", pathToTgtDatabase,
                        "Path to the Target Database [Optional (default: Same "
-                       "as the Query DB)] ")
+                       "as the Query DB)] *NOT IMPLEMENTED YET*")
             ->check(CLI::ExistingFile);
         app.add_option(
                "-s,--separator", outFieldSeparator,
@@ -223,41 +224,40 @@ int parallel_subset_fastaai(const AppParams& pfaaiAppArgs) {
 }
 
 int parallel_qry2tgt_fastaai(const AppParams& pfaaiAppArgs) {
+    // 
+    std::cout << "Implementation NOT Complete " << std::endl;
+    return 0;
     // Initialize databases
-    SQLiteIfT qryDBIf(pfaaiAppArgs.pathToQryDatabase);
-    PFAAI_ERROR_CODE qErrCode = qryDBIf.validate();
+    QTSQLiteIfT qtDBIf(pfaaiAppArgs.pathToQryDatabase, pfaaiAppArgs.pathToTgtDatabase);
+    PFAAI_ERROR_CODE qErrCode = qtDBIf.validate();
     if (qErrCode != PFAAI_OK) {
         return qErrCode;
     }
-    SQLiteIfT tgtDBIf(pfaaiAppArgs.pathToQryDatabase);
-    PFAAI_ERROR_CODE tgtErrCode = tgtDBIf.validate();
-    if (tgtErrCode != PFAAI_OK) {
-        return tgtErrCode;
-    }
     // Meta data query
-    DBMetaData qryDbMeta, tgtDbMeta;
-    qryDBIf.queryMetaData(qryDbMeta);
-    tgtDBIf.queryMetaData(tgtDbMeta);
+    DBMetaData dbMeta;
+    qtDBIf.queryMetaData(dbMeta);
     //
     std::unordered_set<std::string> unionProtiens;
     std::vector<std::string> sharedProtiens;
-    for (const auto& sx : qryDbMeta.proteinSet) {
-        unionProtiens.insert(sx);
-    }
-    for (const auto& sx : tgtDbMeta.proteinSet) {
-        if (unionProtiens.find(sx) != unionProtiens.end()) {
-            sharedProtiens.emplace_back(sx);
-        } else {
-            unionProtiens.insert(sx);
-        }
-    }
 
-    PFQTData pfaaiQTData(qryDBIf, tgtDBIf, qryDbMeta, tgtDbMeta,
+    // TODO(x):: get shared proteins
+    //
+    // for (const auto& sx : qryDbMeta.proteinSet) {
+    //     unionProtiens.insert(sx);
+    // }
+    // for (const auto& sx : tgtDbMeta.proteinSet) {
+    //     if (unionProtiens.find(sx) != unionProtiens.end()) {
+    //         sharedProtiens.emplace_back(sx);
+    //     } else {
+    //         unionProtiens.insert(sx);
+    //     }
+    // }
+
+    PFQTData pfaaiQTData(qtDBIf, dbMeta,
                          sharedProtiens);
     // PHASE 1: Construction of the data structures
     PFAAI_ERROR_CODE pfErrorCode = pfaaiQTData.construct();
-    qryDBIf.closeDB();
-    tgtDBIf.closeDB();
+    qtDBIf.closeDB();
     if (pfErrorCode != PFAAI_OK) {
         return pfErrorCode;
     }

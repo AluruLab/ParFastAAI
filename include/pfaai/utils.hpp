@@ -46,34 +46,35 @@ static inline T block_owner(const SizeType& j, const SizeType& n,
 
 //
 template <typename IT>
-inline void distribute_bags_of_tasks(int nproc, IT ntasks,
-                                     const std::vector<IT>& bag_sizes,
-                                     float slack,
-                                     std::vector<IT>& proc_bag_start,  // NOLINT
-                                     std::vector<IT>& proc_bag_end) {  // NOLINT
-    std::vector<IT> ntasks_distr(nproc, 0);
+inline std::vector<IT>
+distribute_bags_of_tasks(int nproc, IT ntasks, const std::vector<IT>& bag_sizes,
+                         float slack,
+                         std::vector<IT>& bag_starts,  // NOLINT
+                         std::vector<IT>& bag_ends) {  // NOLINT
+    std::vector<IT> ntasks_dist(nproc, 0);
     int ntasks_per_proc = (static_cast<float>(ntasks) / nproc) * (1 + slack);
-    proc_bag_start.resize(nproc, -1);
-    proc_bag_end.resize(nproc, -1);
+    bag_starts.resize(nproc, -1);
+    bag_ends.resize(nproc, -1);
     IT n_bags = IT(bag_sizes.size());
 
     for (IT bag_id = 0, pid = 0; bag_id < n_bags; bag_id++) {
         IT ntasks_bag = bag_sizes[bag_id];
-        if (ntasks_distr[pid] + ntasks_bag <= ntasks_per_proc ||
+        if (ntasks_dist[pid] + ntasks_bag <= ntasks_per_proc ||
             pid == nproc - 1) {
-            ntasks_distr[pid] += ntasks_bag;
-            if (proc_bag_start[pid] == -1) {
-                proc_bag_start[pid] = bag_id;
+            ntasks_dist[pid] += ntasks_bag;
+            if (bag_starts[pid] == -1) {
+                bag_starts[pid] = bag_id;
             }
-            proc_bag_end[pid] = bag_id;
+            bag_ends[pid] = bag_id;
         } else {
             // Move to the next thread and assign the task there
             pid++;
-            ntasks_distr[pid] += ntasks_bag;
-            proc_bag_start[pid] = bag_id;
-            proc_bag_end[pid] = bag_id;
+            ntasks_dist[pid] += ntasks_bag;
+            bag_starts[pid] = bag_id;
+            bag_ends[pid] = bag_id;
         }
     }
+    return ntasks_dist;
 }
 
 // timer definition
