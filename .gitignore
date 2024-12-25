@@ -7,6 +7,7 @@ data/comprehensive_proks.db
 src/main.o
 main.exe
 par_faai.exe
+par_fastaai.x
 build/
 build.debug/
 build.release/
