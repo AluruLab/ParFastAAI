@@ -1,6 +1,6 @@
 ## Parallel Fast AAI
 
-A parallel version of (Fast AAI)[https://github.com/cruizperez/FastAAI]
+A parallel version of [Fast AAI](https://github.com/cruizperez/FastAAI)
 
 ## Installation
 
@@ -63,4 +63,4 @@ Currently parallel FastAAI allows two types of usage:
    AJI (Average Jaccard Index) for the query genomes against all the genomes 
    in the database and outputs a csv file with AJI matrix
 
-data/ directory contains the example databases.
+data/ directory contains the example databases and the output files.
