@@ -1,6 +1,24 @@
+///
+// @file data_impl.hpp
+// @brief The helper classes and functions to construct the
+//        data structures for different usage cases.
+// @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
 //
+// Copyright 2024 Georgia Institute of Technology
 //
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+///
+
 #ifndef PAR_FAST_AAI_DATA_H
 #define PAR_FAST_AAI_DATA_H
 #include <cassert>
@@ -14,6 +32,9 @@
 #include "pfaai/helpers.hpp"
 #include "pfaai/interface.hpp"
 
+//
+// Class for data structure construction in the simple case where
+//  AJI for all pairs of genomes are computed from data of a given database.
 template <typename IdType>
 class ParFAAIData : public DefaultDataStructInterface<IdType> {
   public:
@@ -127,6 +148,9 @@ class ParFAAIData : public DefaultDataStructInterface<IdType> {
 
 //
 //
+// Class for data structure construction in the case where
+//  AJI is computed for  of genomes are computed for a subset of query genomes
+//  in the database.
 template <typename IdType>
 class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
   public:
@@ -307,6 +331,10 @@ class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
     }
 };
 
+// Class for data structure construction in the case where
+//  AJI is computed for  of genomes are computed with query and target are in 
+//  two different databases.
+//  TODO(X): Implementation is incomplete
 template <typename IdType>
 class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
 
@@ -481,7 +509,7 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
             std::cerr << "Lc and Lp are not Initialized" << std::endl;
             return PFAAI_ERR_CONSTRUCT;
         }
-        // 
+        //
         //  Had a logic with F constructed from each database seperately.
         //  Realized doesn't work. Need to have a joint query from both the
         //  databases.
@@ -492,7 +520,7 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
         //        std::vector<IdType> tetramerStart, tetramerEnd, ntSizes;
         //        std::vector<int> errorCodes;
         //        std::vector<timer> threadTimers;
-        // #pragma omp parallel default(none) 
+        // #pragma omp parallel default(none)
         //    shared(tetramerStart, tetramerEnd, errorCodes, threadTimers,
         //    ntSizes)
         //        {

@@ -1,9 +1,29 @@
+///
+// @file helpers.hpp
+// @brief The implementation classes and functions to construct the
+//        data structures.
+// @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
+//
+// Copyright 2024 Georgia Institute of Technology
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+///
+
 #ifndef PAR_FAST_AAI_DATA_HELPERS_H
 #define PAR_FAST_AAI_DATA_HELPERS_H
 
 #include <algorithm>
 #include <iostream>
-#include <numeric>
 #include <omp.h>
 #include <string>
 #include <vector>
@@ -12,6 +32,7 @@
 #include <pfaai/interface.hpp>
 #include <pfaai/utils.hpp>
 
+// Class with functions to construct data structures in parallel
 template <typename IdType, typename IdPairType, typename IdMatrixType,
           typename JACType>
 struct DataStructHelper {
@@ -22,7 +43,7 @@ struct DataStructHelper {
     using DataBaseIfx =
         const DataBaseInterface<IdType, IdPairType, IdMatrixType>;
 
-    //
+    // Parallel construction of the T matrix (nProteins x nGenomes)
     static PFAAI_ERROR_CODE constructT(const DataStructIfx& dataStructPtr,
                                        const DataBaseIfx& inDBIf,
                                        IdMatrixType& inT) {  // NOLINT
@@ -59,6 +80,7 @@ struct DataStructHelper {
         return PFAAI_OK;
     }
 
+    // Parallel construction of the Lc array (size NTETRAMERS)
     static PFAAI_ERROR_CODE constructLc(const DataStructIfx& dataStruct,
                                         const DataBaseIfx& inDBIf,
                                         std::vector<IdType>& Lc) {  // NOLINT
@@ -91,6 +113,7 @@ struct DataStructHelper {
         return PFAAI_OK;
     }
 
+    // Parallel Prefix sum of the arrays
     static void parallelPrefixSum(const std::vector<IdType>& Lc,
                                   std::vector<IdType>& Lp) {  // NOLINT
         // Parallel prefix sum on Lc to construct Lp
@@ -103,6 +126,8 @@ struct DataStructHelper {
         }
     }
 
+    // Parallel construction of the (protein, genome)-pair F array
+    //     (size: Total number of tetramer occurrences)
     static PFAAI_ERROR_CODE constructF(const DataStructIfx& dataStruct,
                                        const DataBaseIfx& dbIf,
                                        std::vector<IdPairType>& F) {  // NOLINT
@@ -141,6 +166,9 @@ struct DataStructHelper {
         return PFAAI_OK;
     }
 
+    // Distribute tasks across nThreads with total number of tasks being
+    //   the sum of all the occurrences of the tetramers in ranges
+    //    tetramerStart and tetramerEnd
     static void
     distributeTetramers(const DataStructIfx& dataStruct,
                         std::vector<IdType>& tetramerStart,  // NOLINT
@@ -177,12 +205,9 @@ struct DataStructHelper {
         }
     }
 
-    // static inline bool trueFunction(IdType idx) { return true; }
-    // static inline bool lessThanFn(IdType ga, IdType gb) { return ga < gb; }
-    // static inline IdType ePairsCounterFn(IdType nQry, IdType nNonQry) {
-    //     return (nNonQry * nQry) + (nQry * (nQry - 1) / 2);
-    // }
-
+    //
+    // Count the number of tuples (protein, genome_A, genome_B) that should
+    //   occur in the E array for tetramer range tStart and tEnd
     static IdType countTetramerTuples(const DataStructIfx& dsIfx,
                                       const IdType& tStart,
                                       const IdType& tEnd) {
@@ -244,6 +269,9 @@ struct DataStructHelper {
         return nTetraTuples;
     }
 
+    //
+    // Construct the of tuples (protein, genome_A, genome_B) that
+    //   occurs in the 'E' array for tetramer range tStart and tEnd
     static IdType constructTetramerTuples(const DataStructIfx& dsIfx,
                                           const int& threadID,
                                           const IdType& tStart,
@@ -333,6 +361,9 @@ struct DataStructHelper {
         return nTuples;
     }
 
+    //
+    // Construct 'E' array, the array of tuples (protein, genome_A, genome_B)
+    //   share a tetramer
     static PFAAI_ERROR_CODE constructE(const DataStructIfx& dsIfx,
                                        EParData<IdType>& dsE) {  // NOLINT
         //

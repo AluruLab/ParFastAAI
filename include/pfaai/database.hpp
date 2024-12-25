@@ -1,3 +1,24 @@
+///
+// @file database.hpp
+// @brief The classes to query data base (sqlite) and populate the
+//        data structure arrays.
+// @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
+//
+// Copyright 2024 Georgia Institute of Technology
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+///
+
 #ifndef DATABASE_INTERFACE_HPP
 #define DATABASE_INTERFACE_HPP
 
@@ -10,6 +31,7 @@
 #include <string>
 #include <vector>
 
+// Names definition of the databse
 struct DatabaseNames {
     const std::string TMTAB_SUFFIX = "_tetras";
     const std::string TMTAB_COLUMN_TT = "tetramer";
@@ -30,6 +52,8 @@ struct DatabaseNames {
     const std::string SCPDTAB_COLUMN_ACC = "scp_acc";
 };
 
+//
+// Interface to a SQLite database, which acts as both query and target database
 template <typename IdType, typename DBNameType>
 class SQLiteInterface : public DefaultDBInterface<IdType> {
     std::string m_pathToDb;
@@ -42,11 +66,18 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
     using IdPairType = typename ParentT::IdPairType;
     using IdMatType = typename ParentT::IdMatType;
 
+    static sqlite3* initDB(const std::string dbPath, int* errorCode) {
+        sqlite3* db;
+        *errorCode = sqlite3_open(dbPath.c_str(), &db);
+        return db;
+    }
+
     explicit SQLiteInterface(const std::string dbPath,
                              DBNameType dbn = DBNameType())
         : m_pathToDb(dbPath), m_sqltDbPtr(initDB(dbPath, &m_dbErrorCode)),
           m_dbNames(dbn) {}
 
+    // Functions to open/close/validate database connections
     virtual inline bool isDBOpen() const {
         return m_dbErrorCode == SQLITE_OK && m_sqltDbPtr != nullptr;
     }
@@ -91,12 +122,7 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
         }
     }
 
-    static sqlite3* initDB(const std::string dbPath, int* errorCode) {
-        sqlite3* db;
-        *errorCode = sqlite3_open(dbPath.c_str(), &db);
-        return db;
-    }
-
+    // Function to query and load counts in the tetramer counts arrary, Lc
     int queryTetramerOccCounts(const std::string protein, IdType tetramerStart,
                                IdType tetramerEnd,
                                std::vector<IdType>& Lc) const {  // NOLINT
@@ -133,6 +159,7 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
         return errorCode;
     }
 
+    // Function to query and load (protien, genome) pairs in the pairs array F
     int queryProteinSetGPPairs(const std::vector<std::string>& proteinSet,
                                IdType tetramerStart, IdType tetramerEnd,
                                typename ParentT::PairIterT iterF,
@@ -188,6 +215,7 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
         return SQLITE_OK;
     }
 
+    // Function to query and load tetramer counts in the pairs matrix T
     int queryProteinTetramerCounts(const std::vector<std::string>& proteinSet,
                                    IdType proteinStart, IdType proteinEnd,
                                    IdMatType& T) const {  // NOLINT
@@ -230,6 +258,7 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
         return SQLITE_OK;
     }
 
+    // Function to query set of genomes
     int queryGenomeSet(std::vector<std::string>& genomeSet) const {  // NOLINT
         const std::string countQueryFmt =
             "SELECT count(*) as count_genome FROM {}";
@@ -278,6 +307,7 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
         return SQLITE_OK;
     }
 
+    // Function to query set of proteins
     int queryProteinSet(std::vector<std::string>& proteinSet) const {  // NOLINT
         sqlite3_stmt* statement;
         const std::string protCountQueryFmt =
@@ -327,6 +357,7 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
         return SQLITE_OK;
     }
 
+    //Function to load meta data : genome and protein sets
     int queryMetaData(DBMetaData& dbMeta) const {  // NOLINT
         int errCode = queryProteinSet(dbMeta.proteinSet);
         if (errCode == SQLITE_OK) {
@@ -337,6 +368,9 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
     }
 };
 
+//
+// Interface to two SQLite databases -- one query and one target
+//  TODO(x): The implementation is incomplete
 template <typename IdType, typename DBNameType>
 class QTSQLiteInterface : public DefaultDBInterface<IdType> {
     std::string m_pathToQryDb, m_pathToTgtDb;

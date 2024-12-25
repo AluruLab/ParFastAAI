@@ -8,19 +8,19 @@ A parallel version of [Fast AAI](https://github.com/cruizperez/FastAAI)
 
 1. Linux (Tested with Ubuntu 22.04)
 2. C++ 17 with Open MPI (Tested with gcc 11.4)
-3. CMake (version 3.2)
+3. CMake (version 3.2, Optional)
 
 
-### Building:
+### Build par_fastaai
 
-For a quick build, run ```build.sh``` which uses gcc and g++ to build the 
-executable ```par_fastaai.x```.
+For a quick build, clone the repo and run ```build.sh```. This build uses 
+gcc and g++ to build the executable ```par_fastaai.x```.
 
-For building with CMake, the following steps:
+For building with CMake, execute the following steps:
 
 1. Clone the repository 
 ```
-git clone https://github.com/AluruLab/ParFastAAI.git
+git clone --recurse-submodules https://github.com/AluruLab/ParFastAAI.git
 ```
 2.  Create a build directory
 ```
@@ -63,4 +63,27 @@ Currently parallel FastAAI allows two types of usage:
    AJI (Average Jaccard Index) for the query genomes against all the genomes 
    in the database and outputs a csv file with AJI matrix
 
-data/ directory contains the example databases and the output files.
+[data/](data/) directory contains the example databases and the output files.
+
+
+## Execution
+
+Once the executable has been built,  the following for more information on all
+the options that the executable accepts:
+<pre><code>./par_fastaai.x --help
+</code></pre>
+
+By default the program uses all the cores in the machine. To reduce the number
+of cores use the environment variable `OMP_NUM_THREADS` as described  in the
+[OpenMP documentation](https://www.openmp.org/spec-html/5.0/openmpse50.html)
+<pre><code> setenv OMP_NUM_THREADS 4,3,2 
+</code></pre>  
+
+## Parallel Algorithm
+
+The parallel algorithm and the data structures used are described in the
+document [Parallel Fast AAI](doc/pfaai_algorithm.pdf)
+
+## Licensing
+
+Our code is licensed under the Apache License 2.0 (see [`LICENSE`](LICENSE)).

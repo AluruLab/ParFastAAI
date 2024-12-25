@@ -1,3 +1,24 @@
+///
+// @file interface.hpp
+// @brief The interface definition for the database and datastructires,
+//        and other utilities and error codes.
+// @author Sriram P C <srirampc@gatech.edu>
+//
+// Copyright 2024 Georgia Institute of Technology
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+///
+
 #ifndef PFAAI_INTERFACE_HPP
 #define PFAAI_INTERFACE_HPP
 
@@ -235,6 +256,7 @@ class DataBaseInterface {
     //
     virtual ~DataBaseInterface() {}
     //
+    // Functions that open/close validates database
     virtual inline bool isDBOpen() const = 0;
     virtual ErrCodeType getDBErrorCode() const = 0;
     virtual const char* getDBError() const = 0;
@@ -242,22 +264,39 @@ class DataBaseInterface {
     virtual PFAAI_ERROR_CODE validate() const = 0;
     virtual inline int closeDB() = 0;
     //
+    // Function that Queries the database for the number of occurences
+    // of range tetramers for the given protein.
+    // Assuming that the Lc is a vector of length NTETRAMERS.
     virtual int
     queryTetramerOccCounts(const std::string protein, IdType tetramerStart,
                            IdType tetramerEnd,
                            std::vector<IdType>& Lc) const = 0;  // NOLINT
+    //
+    // For a given set of proteins and a range of tetramers,
+    // populates the (protien, genome) pair array.
+    // Assumes that the pair iterator has enough memory locations.
+    // Also returns the number of populated
     virtual int
     queryProteinSetGPPairs(const std::vector<std::string>& proteinSet,
                            IdType tetramerStart, IdType tetramerEnd,
                            PairIterT iterF, IdType* fCount) const = 0;
+    //
+    // Populates the metadata object DBMetaData with the genome set 
+    // and protein set information
     virtual int queryMetaData(DBMetaData& metaData) const = 0;  // NOLINT
 
+    // Populates the genome set information
     virtual int
     queryGenomeSet(std::vector<std::string>& genomeSet) const = 0;  // NOLINT
 
+    // Populates the protein set information
     virtual int
     queryProteinSet(std::vector<std::string>& proteinSet) const = 0;  // NOLINT
 
+    //
+    // For a range of proteins among the set of proteins, populates the 
+    // 2-D array such that T(i, j)  contains the number of tetramers for the
+    // protein i and genome j.
     virtual int
     queryProteinTetramerCounts(const std::vector<std::string>& proteinSet,
                                IdType proteinStart, IdType proteinEnd,
@@ -287,8 +326,10 @@ class DataStructInterface {
         {"F", false},
         {"T", false},
     };
-    // Data
+
+    // Input Data
     const std::vector<std::string>& m_proteinSet;
+
     // Data structures
     std::vector<IdType> m_Lc;
     std::vector<IdType> m_Lp;
@@ -296,7 +337,7 @@ class DataStructInterface {
     IdMatrixType m_T;
     EParData<IdType> m_pE;
 
-    // value data
+    // Parameters
     float m_slack;
 
   public:
@@ -338,7 +379,7 @@ class DataStructInterface {
     virtual bool isValidPair(IdType qry, IdType tgt) const = 0;
     virtual IdType countGenomePairs(IdType nQry, IdType nTgt) const = 0;
     //
-    // Construction functions
+    // Construction functions for Data structures
     virtual std::vector<JACType> initJAC() const = 0;
     virtual PFAAI_ERROR_CODE constructL() = 0;
     virtual PFAAI_ERROR_CODE constructF() = 0;

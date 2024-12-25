@@ -1,4 +1,23 @@
-/* NOTE: This solution is written for a sqlite database with UTF-8 Encoding */
+///
+// @file main.cpp
+// @brief Main Entry function for Parallel Fast AAI
+// @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
+//
+// Copyright 2024 Georgia Institute of Technology
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+///
+
 #include <algorithm>
 #include <cstdio>
 #include <iostream>
@@ -224,11 +243,12 @@ int parallel_subset_fastaai(const AppParams& pfaaiAppArgs) {
 }
 
 int parallel_qry2tgt_fastaai(const AppParams& pfaaiAppArgs) {
-    // 
+    //
     std::cout << "Implementation NOT Complete " << std::endl;
     return 0;
     // Initialize databases
-    QTSQLiteIfT qtDBIf(pfaaiAppArgs.pathToQryDatabase, pfaaiAppArgs.pathToTgtDatabase);
+    QTSQLiteIfT qtDBIf(pfaaiAppArgs.pathToQryDatabase,
+                       pfaaiAppArgs.pathToTgtDatabase);
     PFAAI_ERROR_CODE qErrCode = qtDBIf.validate();
     if (qErrCode != PFAAI_OK) {
         return qErrCode;
@@ -253,8 +273,7 @@ int parallel_qry2tgt_fastaai(const AppParams& pfaaiAppArgs) {
     //     }
     // }
 
-    PFQTData pfaaiQTData(qtDBIf, dbMeta,
-                         sharedProtiens);
+    PFQTData pfaaiQTData(qtDBIf, dbMeta, sharedProtiens);
     // PHASE 1: Construction of the data structures
     PFAAI_ERROR_CODE pfErrorCode = pfaaiQTData.construct();
     qtDBIf.closeDB();

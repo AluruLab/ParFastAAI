@@ -1,5 +1,27 @@
-#ifndef PFAAI_RUNNER_HPP
-#define PFAAI_RUNNER_HPP
+///
+// @file algorithm_impl.hpp
+// @brief The helper classes and functions to construct the
+//        data structures for different usage cases.
+// @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
+//
+// Copyright 2024 Georgia Institute of Technology
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+///
+
+
+#ifndef PFAAI_ALGORITHM_HPP
+#define PFAAI_ALGORITHM_HPP
 
 #include <cmath>
 #include <cstdlib>
@@ -12,6 +34,8 @@
 #include "pfaai/interface.hpp"
 #include "pfaai/utils.hpp"
 
+//
+// Implements the Parallel Fast AAI algorithm
 template <typename IdType, typename ValueType> class ParFAAIImpl {
   public:
     using IdPairType = DPair<IdType, IdType>;
@@ -71,6 +95,8 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
     }
 
   protected:
+
+    // distribute genome pairs across nThreads
     void distributeGenomePairs(const int& threadID, const int& nThreads) {
         if (threadID < m_nGenomePairs % nThreads) {
             // Each will be responsible for totalGenomePairs /
@@ -93,6 +119,7 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
         }
     }
 
+    // block distribute tuple Array E for the thread threadID
     void findEBlockExtents(const int& threadID,
                            IdType& currentLocalEIndex) {  // NOLINT
         // We need to know where in the sorted E does each genome pair start
@@ -191,6 +218,7 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
         }
     }
 
+    // compuate JAC for the tuples assigned to thread threadID
     void computeEBlockJAC(int threadID) {
         for (int genomePair = m_threadGPStarts[threadID];
              genomePair <= m_threadGPEnds[threadID]; genomePair++) {
@@ -249,6 +277,8 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
     }
 
   public:
+
+    // function to compute JAC in parallel
     int computeJAC() {
         timer run_timer;
         // Prepare the JAC vector
@@ -276,6 +306,7 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
         return PFAAI_OK;
     }
 
+    // function to compute AJI in parallel
     int computeAJI() {
         m_AJI.resize(m_nGenomePairs);
         // PHASE 4: Finalize output
@@ -291,6 +322,7 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
         return PFAAI_OK;
     }
 
+    // Main run function
     int run() {
         computeJAC();
         computeAJI();
@@ -314,4 +346,4 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
     }
 };
 
-#endif  // !PFAAI_RUNNER_HPP
+#endif  // !PFAAI_ALGORITHM_HPP
