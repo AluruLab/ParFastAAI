@@ -47,7 +47,7 @@ struct DataStructHelper {
     static PFAAI_ERROR_CODE constructT(const DataStructIfx& dataStructPtr,
                                        const DataBaseIfx& inDBIf,
                                        IdMatrixType& inT) {  // NOLINT
-        // Assuming inT is a initalized matrix of size nProteins x nGenomes
+        // Assuming inT is a initialized matrix of size nProteins x nGenomes
         std::vector<timer> thTimers;
         std::vector<int> errCodes;
 #pragma omp parallel default(none)                                             \
@@ -67,8 +67,8 @@ struct DataStructHelper {
             int proteinStart = BLOCK_LOW(threadID, nThreads, nProteins);
             int proteinEnd = BLOCK_HIGH(threadID, nThreads, nProteins);
 
-            errCodes[threadID] = inDBIf.queryProteinTetramerCounts(
-                dataStructPtr.refProteinSet(), proteinStart, proteinEnd, inT);
+            errCodes[threadID] = inDBIf.proteinTetramerCounts(
+                IdPairType(proteinStart, proteinEnd), inT);
             thTimers[threadID].elapsed();
         }
 
@@ -100,8 +100,8 @@ struct DataStructHelper {
             }
 
             for (const std::string& protein : dataStruct.refProteinSet()) {
-                int qryErrCode = inDBIf.queryTetramerOccCounts(
-                    protein, tetraStart, tetraEnd, Lc);
+                int qryErrCode = inDBIf.tetramerOccCounts(
+                    protein, IdPairType(tetraStart, tetraEnd), Lc);
                 if (qryErrCode != SQLITE_OK) {
                     errCodes[threadID] = qryErrCode;
                 }
@@ -153,9 +153,9 @@ struct DataStructHelper {
             }
             thTimers[threadID].reset();
             IdType fBeginOffset = dataStruct.refLp()[tetramerStart[threadID]];
-            errCodes[threadID] = dbIf.queryProteinSetGPPairs(
-                dataStruct.refProteinSet(), tetramerStart[threadID],
-                tetramerEnd[threadID], F.begin() + fBeginOffset, &fCount);
+            errCodes[threadID] = dbIf.proteinSetGPPairs(
+                IdPairType(tetramerStart[threadID], tetramerEnd[threadID]),
+                F.begin() + fBeginOffset, &fCount);
             thTimers[threadID].elapsed();
         }
         if (std::any_of(errCodes.begin(), errCodes.end(),

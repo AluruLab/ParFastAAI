@@ -367,14 +367,14 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
     explicit ParFAAIQryTgtData(const DBIfx& qtDBIf, const DBMetaData& dbMeta,
                                const std::vector<std::string>& protSet,
                                float slack = Parent::DEFAULT_SLACK_PCT)
-        : Parent(protSet, dbMeta.attGenomeSet.size(), dbMeta.genomeSet.size(),
+        : Parent(protSet, dbMeta.qyGenomeSet.size(), dbMeta.genomeSet.size(),
                  slack),
           m_qtDBIf(qtDBIf), m_dbMeta(dbMeta), m_nSharedProteins(protSet.size()),
-          m_nUnionGenomes(dbMeta.genomeSet.size() + dbMeta.attGenomeSet.size()),
+          m_nUnionGenomes(dbMeta.genomeSet.size() + dbMeta.qyGenomeSet.size()),
           m_qryIndicator(m_nUnionGenomes, false),
           m_genomeIndexMap(m_nUnionGenomes, -1) {
         // Initialize query indicators,  index maps
-        IdType nQryGenomes = m_dbMeta.attGenomeSet.size();
+        IdType nQryGenomes = m_dbMeta.qyGenomeSet.size();
         IdType nTgtGenomes = m_dbMeta.genomeSet.size();
         for (IdType ix = 0; ix < nQryGenomes; ix++) {
             m_qryIndicator[ix] = true;
@@ -389,14 +389,14 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
     ~ParFAAIQryTgtData() {}
 
     inline virtual const std::vector<std::string>& refQuerySet() const {
-        return m_dbMeta.attGenomeSet;
+        return m_dbMeta.qyGenomeSet;
     }
     inline virtual const std::vector<std::string>& refTargetSet() const {
         return m_dbMeta.genomeSet;
     }
 
     //
-    inline IdType qrySetSize() const { return m_dbMeta.attGenomeSet.size(); }
+    inline IdType qrySetSize() const { return m_dbMeta.qyGenomeSet.size(); }
     inline IdType tgtSetSize() const { return m_dbMeta.genomeSet.size(); }
     inline IdType nGenomePairs() const { return qrySetSize() * tgtSetSize(); }
     inline IdType nUnionGenomes() const { return m_nUnionGenomes; }

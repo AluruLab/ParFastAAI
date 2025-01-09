@@ -18,7 +18,6 @@
 // limitations under the License.
 ///
 
-
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -100,8 +99,7 @@ static constexpr char REF_QSUB_AJI_DATA[] = "data/xdb_qry_subset_aji.bin";
 
 TEST_CASE("Query Genome Metadata", "[db_meta_data]") {
     SQLiteIfT sqlt_if(G_DB_PATH);
-    DBMetaData dbMeta;
-    sqlt_if.queryMetaData(dbMeta);
+    const DBMetaData& dbMeta = sqlt_if.getMeta();
     REQUIRE(G_PROTEINSET == dbMeta.proteinSet);
     REQUIRE(G_GENOMESET == dbMeta.genomeSet);
 }
@@ -109,7 +107,7 @@ TEST_CASE("Query Genome Metadata", "[db_meta_data]") {
 TEST_CASE("Query No. of Tetramers", "[ntetramers_query]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0);
     SQLiteIfT sqlt_if(G_DB_PATH);
-    sqlt_if.queryTetramerOccCounts("PF00119.20", 2060, 2144, Lc);
+    sqlt_if.tetramerOccCounts("PF00119.20", IdPairType(2060, 2144), Lc);
     REQUIRE(Lc[2060] == 20);
     REQUIRE(Lc[2100] == 20);
     REQUIRE(Lc[2140] == 3);
@@ -120,7 +118,7 @@ TEST_CASE("Query Protein Tetramer Counts", "[prot_teteramer_counts]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0), Lp(G_NTETRAMERS, 0);
     IdMatType T(G_PROTEINSET_SIZE, G_GENOMESET_SIZE);
     SQLiteIfT sqlt_if(G_DB_PATH);
-    sqlt_if.queryProteinTetramerCounts(G_PROTEINSET, 0, 3, T);
+    sqlt_if.proteinTetramerCounts(IdPairType(0, 3), T);
     REQUIRE(G_QRY_PST_TETRA_CTS[0] ==
             std::vector<IdType>(T.row_begin(0), T.row_end(0)));
     REQUIRE(G_QRY_PST_TETRA_CTS[1] ==
@@ -150,8 +148,8 @@ TEST_CASE("Query Protein Set Tetramers", "[prot_set_teteramers]") {
     std::vector<IdPairType> F(Lp.back() + Lc.back(), IdPairType(-1, -1));
     SQLiteIfT sqlt_if(G_DB_PATH);
     int fct = 0;
-    int rc = sqlt_if.queryProteinSetGPPairs(G_PROTEINSET, 2000, 3000, F.begin(),
-                                            &fct);
+    int rc =
+        sqlt_if.proteinSetGPPairs(IdPairType(2000, 3000), F.begin(), &fct);
     REQUIRE(rc == SQLITE_OK);
     REQUIRE(F[Lp[2000]] == IdPairType(5, 0));
     REQUIRE(F[Lp[2415] - 1] == IdPairType(35, 0x13));
@@ -160,8 +158,7 @@ TEST_CASE("Query Protein Set Tetramers", "[prot_set_teteramers]") {
 
 TEST_CASE("Test Data Structures Construction", "[construct_LFTE]") {
     SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
-    DBMetaData dbMeta;
-    sqlt_if.queryMetaData(dbMeta);
+    const DBMetaData& dbMeta =sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
     pfaaiData.constructL();
@@ -221,8 +218,7 @@ TEST_CASE("Test Data Structures Construction", "[construct_LFTE]") {
 TEST_CASE("Test Data Subset 1 Structures Construction",
           "[construct_subset1_LFTE]") {
     SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET1_PATH);
-    DBMetaData dbMeta;
-    sqlt_if.queryMetaData(dbMeta);
+    const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
     pfaaiData.constructL();
@@ -281,8 +277,7 @@ TEST_CASE("Test Data Subset 1 Structures Construction",
 TEST_CASE("Test Data Subset 2 Structures Construction",
           "[construct_subset2_LFTE]") {
     SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET2_PATH);
-    DBMetaData dbMeta;
-    sqlt_if.queryMetaData(dbMeta);
+    const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
     pfaaiData.constructL();
@@ -345,8 +340,7 @@ TEST_CASE("Test Data Subset 2 Structures Construction",
 
 TEST_CASE("Implementation Test", "[compute_JAC_AJI]") {
     SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
-    DBMetaData dbMeta;
-    sqlt_if.queryMetaData(dbMeta);
+    const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
     pfaaiData.construct();
@@ -379,8 +373,7 @@ TEST_CASE("Implementation Test", "[compute_JAC_AJI]") {
 
 TEST_CASE("Subset 1 Implementation Test", "[compute_subset1_JAC_AJI]") {
     SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET1_PATH);
-    DBMetaData dbMeta;
-    sqlt_if.queryMetaData(dbMeta);
+    const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
     pfaaiData.construct();
@@ -414,8 +407,7 @@ TEST_CASE("Subset 1 Implementation Test", "[compute_subset1_JAC_AJI]") {
 
 TEST_CASE("Subset 2 Implementation Test", "[compute_subset2_JAC_AJI]") {
     SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET2_PATH);
-    DBMetaData dbMeta;
-    sqlt_if.queryMetaData(dbMeta);
+    const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
     pfaaiData.construct();
@@ -448,8 +440,7 @@ TEST_CASE("Subset 2 Implementation Test", "[compute_subset2_JAC_AJI]") {
 
 TEST_CASE("PF Query Subset Test", "[query_subset]") {
     SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
-    DBMetaData dbMeta;
-    sqlt_if.queryMetaData(dbMeta);
+    const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     std::vector<std::string> qryGenomeSet;
     std::ifstream in_stream(DATA_QSUB_TEST_INPUT);
@@ -496,7 +487,7 @@ TEST_CASE("PF Query Subset Test", "[query_subset]") {
 //     SQLiteInterface<IdType, DatabaseNames> tgtDBIf(G_DB_SUBSET2_PATH);
 //     DBMetaData tgtDbMeta;
 //     tgtDBIf.queryMetaData(tgtDbMeta);
-// 
+//
 //     //
 //     std::unordered_set<std::string> unionProtiens;
 //     std::vector<std::string> sharedProtiens;
@@ -510,7 +501,7 @@ TEST_CASE("PF Query Subset Test", "[query_subset]") {
 //             unionProtiens.insert(sx);
 //         }
 //     }
-// 
+//
 //     PFQTData pfaaiQTData(qryDBIf, tgtDBIf, qryDbMeta, tgtDbMeta,
 //                          sharedProtiens);
 //     // PHASE 1: Construction of the data structures

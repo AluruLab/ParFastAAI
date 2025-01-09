@@ -238,7 +238,7 @@ template <typename IdType> struct EParData {
 struct DBMetaData {
     std::vector<std::string> proteinSet;
     std::vector<std::string> genomeSet;
-    std::vector<std::string> attGenomeSet;
+    std::vector<std::string> qyGenomeSet;
 };
 
 //
@@ -251,9 +251,10 @@ class DataBaseInterface {
     using IdMatType = IdMatT;
     using ErrCodeType = ErrCodeT;
     using PairIterT = typename std::vector<IdPairType>::iterator;
+    typedef IdType (*MapperFnT)(IdType);
+
     //
     DataBaseInterface() {}
-    //
     virtual ~DataBaseInterface() {}
     //
     // Functions that open/close validates database
@@ -264,43 +265,29 @@ class DataBaseInterface {
     virtual PFAAI_ERROR_CODE validate() const = 0;
     virtual inline int closeDB() = 0;
     //
+    // Reference functions to get meta data
+    virtual const DBMetaData& getMeta() const = 0;
+
+    //
     // Function that Queries the database for the number of occurences
     // of range tetramers for the given protein.
     // Assuming that the Lc is a vector of length NTETRAMERS.
-    virtual int
-    queryTetramerOccCounts(const std::string protein, IdType tetramerStart,
-                           IdType tetramerEnd,
-                           std::vector<IdType>& Lc) const = 0;  // NOLINT
+    virtual int tetramerOccCounts(const std::string protein,
+                                  IdPairType tetraRange,
+                                  std::vector<IdType>& Lc) const = 0;  // NOLINT
     //
     // For a given set of proteins and a range of tetramers,
     // populates the (protien, genome) pair array.
     // Assumes that the pair iterator has enough memory locations.
     // Also returns the number of populated
-    virtual int
-    queryProteinSetGPPairs(const std::vector<std::string>& proteinSet,
-                           IdType tetramerStart, IdType tetramerEnd,
-                           PairIterT iterF, IdType* fCount) const = 0;
+    virtual int proteinSetGPPairs(IdPairType tetraRange, PairIterT iterF,
+                                  IdType* fCount) const = 0;
     //
-    // Populates the metadata object DBMetaData with the genome set 
-    // and protein set information
-    virtual int queryMetaData(DBMetaData& metaData) const = 0;  // NOLINT
-
-    // Populates the genome set information
-    virtual int
-    queryGenomeSet(std::vector<std::string>& genomeSet) const = 0;  // NOLINT
-
-    // Populates the protein set information
-    virtual int
-    queryProteinSet(std::vector<std::string>& proteinSet) const = 0;  // NOLINT
-
-    //
-    // For a range of proteins among the set of proteins, populates the 
+    // For a range of proteins among the set of proteins, populates the
     // 2-D array such that T(i, j)  contains the number of tetramers for the
     // protein i and genome j.
-    virtual int
-    queryProteinTetramerCounts(const std::vector<std::string>& proteinSet,
-                               IdType proteinStart, IdType proteinEnd,
-                               IdMatType& T) const = 0;  // NOLINT
+    virtual int proteinTetramerCounts(IdPairType proteinRange,
+                                      IdMatType& T) const = 0;  // NOLINT
 };
 
 template <typename IdType>
@@ -352,32 +339,38 @@ class DataStructInterface {
     //
     virtual ~DataStructInterface() {}
     //
+    virtual float slack() const { return m_slack; }
+
     // Reference functions to data structures
     inline virtual const std::vector<IdType>& refLc() const { return m_Lc; }
     inline virtual const std::vector<IdType>& refLp() const { return m_Lp; }
     inline virtual const IdMatrixType& refT() const { return m_T; }
     inline virtual const std::vector<IdPairType>& refF() const { return m_F; }
     inline virtual const EParData<IdType>& refE() const { return m_pE; }
+
+    // Input data ref
     inline virtual const std::vector<std::string>& refProteinSet() const {
         return m_proteinSet;
     }
-    inline virtual const std::vector<std::string>& refQuerySet() const = 0;
-    inline virtual const std::vector<std::string>& refTargetSet() const = 0;
+    virtual const std::vector<std::string>& refQuerySet() const = 0;
+    virtual const std::vector<std::string>& refTargetSet() const = 0;
+    virtual IdType qrySetSize() const = 0;
+    virtual IdType tgtSetSize() const = 0;
+
     //
     // Getter functions to dimensions
     virtual inline IdType nTetramers() const { return NTETRAMERS; }
-    virtual float slack() const { return m_slack; }
-    virtual IdType qrySetSize() const = 0;
-    virtual IdType tgtSetSize() const = 0;
     virtual IdType nGenomePairs() const = 0;
+    virtual IdType countGenomePairs(IdType nQry, IdType nTgt) const = 0;
     //
-    // Mapper/Validator functions
-    virtual IdType genomePairToIndex(IdType genomeA, IdType genomeB) const = 0;
-    virtual inline IdType mapQueryId(IdType qry) const = 0;
-    virtual inline IdType mapTargetId(IdType tgt) const = 0;
+    // Validator functions
     virtual bool isQryGenome(IdType genome) const = 0;
     virtual bool isValidPair(IdType qry, IdType tgt) const = 0;
-    virtual IdType countGenomePairs(IdType nQry, IdType nTgt) const = 0;
+    //
+    // Mapper functions : TODO(x): elaborate the use of these functions
+    virtual IdType genomePairToIndex(IdType genomeA, IdType genomeB) const = 0;
+    virtual IdType mapQueryId(IdType qry) const = 0;
+    virtual IdType mapTargetId(IdType tgt) const = 0;
     //
     // Construction functions for Data structures
     virtual std::vector<JACType> initJAC() const = 0;
@@ -386,7 +379,8 @@ class DataStructInterface {
     virtual PFAAI_ERROR_CODE constructT() = 0;
     virtual PFAAI_ERROR_CODE constructE() = 0;
     //
-    // Main construction function
+    // Main construction function, constructs in the following order:
+    //             Lc, Lp, F, T and E
     virtual PFAAI_ERROR_CODE construct() {
         timer run_timer;
         m_errorCode = constructL();

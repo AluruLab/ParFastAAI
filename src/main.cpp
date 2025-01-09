@@ -189,8 +189,7 @@ int parallel_fastaai(const AppParams& pfaaiAppArgs) {
     if (errorCode != PFAAI_OK) {
         return errorCode;
     }
-    DBMetaData dbMeta;
-    sqltIf.queryMetaData(dbMeta);
+    const DBMetaData& dbMeta = sqltIf.getMeta();
     //
     PFData pfaaiData(sqltIf, dbMeta);
     // PHASE 1: Construction of the data structures
@@ -218,8 +217,7 @@ int parallel_subset_fastaai(const AppParams& pfaaiAppArgs) {
     if (errorCode != PFAAI_OK) {
         return errorCode;
     }
-    DBMetaData dbMeta;
-    sqltIf.queryMetaData(dbMeta);
+    const DBMetaData& dbMeta = sqltIf.getMeta();
     //
     PFQSubData pfaaiData(sqltIf, dbMeta, pfaaiAppArgs.qryGenomeSet);
     // PHASE 1: Construction of the data structures
@@ -254,8 +252,7 @@ int parallel_qry2tgt_fastaai(const AppParams& pfaaiAppArgs) {
         return qErrCode;
     }
     // Meta data query
-    DBMetaData dbMeta;
-    qtDBIf.queryMetaData(dbMeta);
+    const DBMetaData& dbMeta = qtDBIf.getMeta();
     //
     std::unordered_set<std::string> unionProtiens;
     std::vector<std::string> sharedProtiens;

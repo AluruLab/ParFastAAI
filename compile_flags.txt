@@ -5,3 +5,6 @@
 -I./ext/cereal/include/
 -I./ext/CLI11/include/
 -I./tests/
+-I./build.debug/ext/Catch2/generated-includes/
+-I./build.release/ext/Catch2/generated-includes/
+-I./build/ext/Catch2/generated-includes/
