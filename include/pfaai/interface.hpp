@@ -253,9 +253,9 @@ class DataBaseInterface {
     using PairIterT = typename std::vector<IdPairType>::iterator;
     typedef IdType (*MapperFnT)(IdType);
 
-    //
     DataBaseInterface() {}
     virtual ~DataBaseInterface() {}
+
     //
     // Functions that open/close validates database
     virtual inline bool isDBOpen() const = 0;
@@ -264,6 +264,7 @@ class DataBaseInterface {
     virtual std::string getDBPath() const = 0;
     virtual PFAAI_ERROR_CODE validate() const = 0;
     virtual inline int closeDB() = 0;
+
     //
     // Reference functions to get meta data
     virtual const DBMetaData& getMeta() const = 0;
@@ -289,10 +290,6 @@ class DataBaseInterface {
     virtual int proteinTetramerCounts(IdPairType proteinRange,
                                       IdMatType& T) const = 0;  // NOLINT
 };
-
-template <typename IdType>
-using DefaultDBInterface =
-    DataBaseInterface<IdType, DPair<IdType, IdType>, DMatrix<IdType>, int>;
 
 //
 // Data Structure interface
@@ -361,15 +358,32 @@ class DataStructInterface {
     // Getter functions to dimensions
     virtual inline IdType nTetramers() const { return NTETRAMERS; }
     virtual IdType nGenomePairs() const = 0;
-    virtual IdType countGenomePairs(IdType nQry, IdType nTgt) const = 0;
+
     //
-    // Validator functions
+    // When a tetramer occurs nQry times in query genome, nTgt times in
+    //   target genome, returns the number of tuples that should occur
+    //   in the E array : array of (protein, genome_A, genome_B) tuples
+    virtual IdType countGenomePairs(IdType nQry, IdType nTgt) const = 0;
+
+    //
+    // Indicator functions :
+    //   - verify if a genome id is a valid query genome
+    //   - verify if a pair is valid (query, target pair)
+    // The input ids  are what is provided in the 'F' and 'E' array
     virtual bool isQryGenome(IdType genome) const = 0;
     virtual bool isValidPair(IdType qry, IdType tgt) const = 0;
+
     //
-    // Mapper functions : TODO(x): elaborate the use of these functions
+    // genomePairToIndex: Jaccard values are computed in a flat JAC Array maps
+    // between the genome_id pair and the index in JAC array
     virtual IdType genomePairToIndex(IdType genomeA, IdType genomeB) const = 0;
+
+    // Mapper functions : Used to generate the ouput Matrix
+    //  -  mapQueryId : maps from the 'genome id used in the data structures' to
+    //  the index in output matrix, specifically, 'column index of the matrix'
     virtual IdType mapQueryId(IdType qry) const = 0;
+    //  -  mapTargetId : maps from the 'genome id used in the data structures'
+    //  the index in output matrix, specifically, 'row index of the matrix'
     virtual IdType mapTargetId(IdType tgt) const = 0;
     //
     // Construction functions for Data structures
@@ -378,9 +392,10 @@ class DataStructInterface {
     virtual PFAAI_ERROR_CODE constructF() = 0;
     virtual PFAAI_ERROR_CODE constructT() = 0;
     virtual PFAAI_ERROR_CODE constructE() = 0;
+
     //
     // Main construction function, constructs in the following order:
-    //             Lc, Lp, F, T and E
+    //    Lc -> Lp -> F -> T and, finally E
     virtual PFAAI_ERROR_CODE construct() {
         timer run_timer;
         m_errorCode = constructL();
@@ -404,6 +419,11 @@ class DataStructInterface {
         return PFAAI_OK;
     }
 };
+
+// Default interfaces
+template <typename IdType>
+using DefaultDBInterface =
+    DataBaseInterface<IdType, DPair<IdType, IdType>, DMatrix<IdType>, int>;
 
 template <typename IdType>
 using DefaultDataStructInterface =

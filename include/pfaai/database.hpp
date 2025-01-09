@@ -391,8 +391,7 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
 };
 
 //
-// Interface to two SQLite databases -- one query and one target
-//  TODO(x): The implementation is incomplete
+// Interface to two different SQLite databases -- one query and one target
 template <typename IdType, typename DBNameType>
 class QTSQLiteInterface : public DefaultDBInterface<IdType> {
     std::string m_pathToQryDb, m_pathToTgtDb;
@@ -684,8 +683,9 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
     }
 
     // Function to query and load tetramer counts in the pairs matrix T
+    template <typename MapFn>
     int dbProteinTetramerCounts(IdPairType protRange, DBIndicator dbind,
-                                IdType (*gidMapper)(IdType),
+                                MapFn&& gidMapFn,
                                 IdMatType& T) const {  // NOLINT
         //
         const std::vector<std::string>& proteinSet = m_dbMeta.proteinSet;
@@ -723,7 +723,7 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
                 int sizeOfBlobInBytes = sqlite3_column_int(statement, 1);
                 int countTetras = sizeOfBlobInBytes / sizeof(int);
                 int proteinIndex = sqlite3_column_int(statement, 2);
-                T(proteinIndex, gidMapper(genomeID)) += countTetras;
+                T(proteinIndex,  gidMapFn(genomeID)) += countTetras;
             }
         }
 
@@ -734,10 +734,12 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
     virtual int proteinTetramerCounts(IdPairType protRange,
                                       IdMatType& T) const {  // NOLINT
         //  Get counts from both databases
-        dbProteinTetramerCounts(protRange,
-                                DBIndicator::target_db, m_tgtIdMapper, T);
-        dbProteinTetramerCounts(protRange,
-                                DBIndicator::query_db, m_qryIdMapper, T);
+        dbProteinTetramerCounts(
+            protRange, DBIndicator::target_db, [](IdType gid) { return gid; },
+            T);
+        dbProteinTetramerCounts(
+            protRange, DBIndicator::query_db,
+            [&](IdType gid) { return m_qryIdOffset + gid; }, T);
         return SQLITE_OK;
     }
 };
