@@ -114,6 +114,10 @@ static constexpr char REF_QT_F_ARRAY[] = "data/xdb_qt_f_array.bin";
 static constexpr char REF_QT_T_MATRIX[] = "data/xdb_qt_t_matrix.bin";
 static constexpr char REF_QT_COMBO_T_MATRIX[] =
     "data/xdb_qt_combo_t_matrix.bin";
+static constexpr char REF_QT_SRTD_E_ARRAY[] =
+    "data/xdb_qt_sorted_e_array.bin";
+static constexpr char REF_QT_JAC_DATA[] = "data/xdb_qt_jac.bin";
+static constexpr char REF_QT_AJI_DATA[] = "data/xdb_qt_aji.bin";
 
 TEST_CASE("Query Genome Metadata", "[db_meta_data]") {
     SQLiteDB sqlt_if(G_DB_PATH);
@@ -597,17 +601,6 @@ TEST_CASE("QT Test Data Structures Construction", "[qt_construct_LFTE]") {
     REQUIRE(std::vector(Lc.begin(), Lc.begin() + 3001) == tLc);
     REQUIRE(refLc == Lc);
     REQUIRE(refLp == Lp);
-    //
-    pfaaiQTData.constructF();
-    std::vector<IdPairType> F = pfaaiQTData.refF();
-    std::vector<IdPairType> refF;
-    {
-        std::ifstream fcx(REF_QT_F_ARRAY, std::ios::binary);
-        cereal::BinaryInputArchive iarchive(fcx);
-        iarchive(refF);
-    }
-    REQUIRE(refF == F);
-
     pfaaiQTData.constructT();
     IdMatType T = pfaaiQTData.refT();
     IdMatType refT(dbMeta.proteinSet.size(),
@@ -627,21 +620,64 @@ TEST_CASE("QT Test Data Structures Construction", "[qt_construct_LFTE]") {
     }
     REQUIRE(IdMatType(comboT.rows() - 1, comboT.cols(), comboT.data().data()) ==
             T);
-    // TODO(x)
 
-    // //
-    // pfaaiQTData.constructE();
-    // const std::vector<ETriple<IdType>>& E = pfaaiQTData.refE().E;
-    // std::vector<ETriple<IdType>> refE;
-    // {
-    //     std::ifstream tcx(REF_SRTD_E_ARRAY, std::ios::binary);
-    //     cereal::BinaryInputArchive iarchive(tcx);
-    //     iarchive(refE);
-    // }
-    // REQUIRE(E == refE);
+    //
+    pfaaiQTData.constructF();
+    std::vector<IdPairType> F = pfaaiQTData.refF();
+    std::vector<IdPairType> refF;
+    {
+        std::ifstream fcx(REF_QT_F_ARRAY, std::ios::binary);
+        cereal::BinaryInputArchive iarchive(fcx);
+        iarchive(refF);
+    }
+    REQUIRE(refF == F);
+
+    //
+    pfaaiQTData.constructE();
+    const std::vector<ETriple<IdType>>& E = pfaaiQTData.refE().E;
+    // pfaaiQTData.print_e();
+    std::vector<ETriple<IdType>> refE;
+    {
+        std::ifstream tcx(REF_QT_SRTD_E_ARRAY, std::ios::binary);
+        cereal::BinaryInputArchive iarchive(tcx);
+        iarchive(refE);
+    }
+    REQUIRE(E == refE);
     // IdType nTotal = 0;
     // for (const auto& ex : E)
     //     if (ex.genomeA == 0 || ex.genomeA == 2)
     //         nTotal++;
     // std::cout << "N total : " << nTotal << std::endl;
+}
+
+TEST_CASE("Implementation Test", "[qt_compute_JAC_AJI]") {
+    QTSQLiteDB sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
+    const DBMetaData& dbMeta = sqlt_if.getMeta();
+    //
+    PFQTData pfaaiQTData(sqlt_if, dbMeta, dbMeta.proteinSet);
+    pfaaiQTData.construct();
+
+    //
+    ParFAAIImpl<IdType, double> pfaaiImpl(pfaaiQTData);
+    pfaaiImpl.computeJAC();
+    std::vector<JACTuple<IdType, double>> JAC = pfaaiImpl.getJAC(), refJAC;
+    {
+        std::ifstream tcx(REF_QT_JAC_DATA, std::ios::binary);
+        cereal::BinaryInputArchive iarchive(tcx);
+        iarchive(refJAC);
+    }
+    REQUIRE(refJAC == JAC);
+    // for (std::size_t i = 0; i < JAC.size(); i++)
+    //     std::cout << JAC[i] << std::endl;
+    //
+    pfaaiImpl.computeAJI();
+    std::vector<double> AJI = pfaaiImpl.getAJI(), refAJI;
+    {
+        std::ifstream tcx(REF_QT_AJI_DATA, std::ios::binary);
+        cereal::BinaryInputArchive iarchive(tcx);
+        iarchive(refAJI);
+    }
+    REQUIRE(refAJI == AJI);
+    // for (std::size_t i = 0; i < AJI.size(); i++)
+    //     std::cout << AJI[i] << std::endl;
 }

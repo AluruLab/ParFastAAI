@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <iostream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <CLI/CLI.hpp>
@@ -67,12 +68,14 @@ struct AppParams {
           outFieldSeparator(",") {
         app.add_option("path_to_input_db", pathToDatabase,
                        "Path to the Input Database")
-            ->check(CLI::ExistingFile);
+            ->check(CLI::ExistingFile)
+            ->required(true);
         app.add_option("path_to_output_file", pathToOutputFile,
-                       "Path to output csv file.");
+                       "Path to output csv file.")
+            ->required(true);
         app.add_option("-r,--query_db", pathToQryDatabase,
                        "Path to the Query Database [Optional (default: Same "
-                       "as the Input DB)] *NOT IMPLEMENTED YET*")
+                       "as the Input DB)]")
             ->check(CLI::ExistingFile);
         app.add_option(
                "-s,--separator", outFieldSeparator,
@@ -128,7 +131,7 @@ struct AppParams {
 };
 
 void printOutput(const PFDSInterface& pfdata, const PFImpl& impl,
-                 const AppParams& appArgs) {
+                 const AppParams& appArgs, bool isSubset = true) {
     IdType nQryGenomes = pfdata.qrySetSize();
     IdType nTgtGeneomes = pfdata.tgtSetSize();
     //
@@ -144,13 +147,12 @@ void printOutput(const PFDSInterface& pfdata, const PFImpl& impl,
         ajiMatrix(pfdata.mapQueryId(fga), pfdata.mapTargetId(fgb)) = cAJI[i];
         //
         // Other side of the diagonal if genomeB is also a query genome
-        if (pfdata.isQryGenome(cJAC[i].genomeB)) {
+        if (isSubset && pfdata.isQryGenome(cJAC[i].genomeB)) {
             ajiMatrix(pfdata.mapQueryId(fgb), pfdata.mapTargetId(fga)) =
                 cAJI[i];
         }
     }
 
-    // std::ofstream fpx(appArgs.pathToOutputFile);
     FILE* fpx = fopen(appArgs.pathToOutputFile.c_str(), "w");
 
     const auto& tgtRef = pfdata.refTargetSet();
@@ -199,6 +201,36 @@ int parallel_fastaai(const AppParams& appArgs) {
     return PFAAI_OK;
 }
 
+int validate_subset(const AppParams& appArgs, const DBMetaData& dbMeta) {
+    std::unordered_set<std::string> dbGenomeSet(dbMeta.genomeSet.begin(),
+                                                dbMeta.genomeSet.end());
+
+    std::vector<std::string> missingGenomes;
+    for (auto& genome : appArgs.qryGenomeSet) {
+        if (dbGenomeSet.find(genome) == dbGenomeSet.end()) {
+            missingGenomes.push_back(genome);
+        }
+    }
+    if (missingGenomes.size() > 0) {
+        std::cout << "--------------------ERROR-----------------------------"
+                  << std::endl
+                  << " In the query subset file, the following genomes are "
+                  << std::endl
+                  << " missing from the database : " << std::endl
+                  << fmt::format("    {}",
+                                 fmt::join(missingGenomes.begin(),
+                                           missingGenomes.end(), "\n    "))
+                  << std::endl
+                  << std::endl
+                  << " Please remove them and before running Fast AAI. "
+                  << std::endl
+                  << "------------------------------------------------------"
+                  << std::endl;
+        return PFAAI_ERR_CONSTRUCT;
+    }
+    return PFAAI_OK;
+}
+
 int parallel_subset_fastaai(const AppParams& appArgs) {
     // Initialize databases
     SQLiteDB sqltIf(appArgs.pathToDatabase);
@@ -206,9 +238,14 @@ int parallel_subset_fastaai(const AppParams& appArgs) {
     if (errorCode != PFAAI_OK) {
         return errorCode;
     }
-    //
-    PFQSubData pfaaiData(sqltIf, sqltIf.getMeta(), appArgs.qryGenomeSet);
+    // Validate Input
+    const DBMetaData& dbMeta = sqltIf.getMeta();
+    if (validate_subset(appArgs, dbMeta) != PFAAI_OK) {
+        return PFAAI_ERR_CONSTRUCT;
+    }
+
     // PHASE 1: Construction of the data structures
+    PFQSubData pfaaiData(sqltIf, dbMeta, appArgs.qryGenomeSet);
     PFAAI_ERROR_CODE pfErrorCode = pfaaiData.construct();
     sqltIf.closeDB();
     //
@@ -228,6 +265,40 @@ int parallel_subset_fastaai(const AppParams& appArgs) {
     return PFAAI_OK;
 }
 
+int validate_qry2tgt(const DBMetaData& dbMeta) {
+    std::unordered_set<std::string> dbGenomeSet(dbMeta.genomeSet.begin(),
+                                                dbMeta.genomeSet.end());
+
+    std::vector<std::string> commonGenomes;
+    for (auto& genome : dbMeta.qyGenomeSet) {
+        if (dbGenomeSet.find(genome) != dbGenomeSet.end()) {
+            commonGenomes.push_back(genome);
+        }
+    }
+    if (commonGenomes.size() > 0) {
+        std::cout << "---------------------ERROR------------------------------"
+                  << std::endl
+                  << "  Query database should have no intersecting genes with "
+                  << std::endl
+                  << "  the main data base." << std::endl
+                  << std::endl
+                  << "  In the query data base, the following genomes are "
+                  << std::endl
+                  << "  overlapping with the target database:" << std::endl
+                  << fmt::format("    {}",
+                                 fmt::join(commonGenomes.begin(),
+                                           commonGenomes.end(), "\n    "))
+                  << std::endl
+                  << std::endl
+                  << "  Please remove them before running Fast AAI."
+                  << std::endl
+                  << "--------------------------------------------------------"
+                  << std::endl;
+        return PFAAI_ERR_CONSTRUCT;
+    }
+    return PFAAI_OK;
+}
+
 int parallel_qry2tgt_fastaai(const AppParams& appArgs) {
     //
     // Initialize databases and Meta data query
@@ -236,9 +307,12 @@ int parallel_qry2tgt_fastaai(const AppParams& appArgs) {
     if (qErrCode != PFAAI_OK) {
         return qErrCode;
     }
-
-    // PHASE 1: Construction of the data structures
+    //
     const DBMetaData& dbMeta = qtDBIf.getMeta();
+    if (validate_qry2tgt(dbMeta) != PFAAI_OK) {
+        return PFAAI_ERR_CONSTRUCT;
+    }
+    // PHASE 1: Construction of the data structures
     PFQTData pfaaiQTData(qtDBIf, dbMeta, dbMeta.proteinSet);
     PFAAI_ERROR_CODE pfErrorCode = pfaaiQTData.construct();
     qtDBIf.closeDB();
@@ -254,7 +328,7 @@ int parallel_qry2tgt_fastaai(const AppParams& appArgs) {
 #endif
     if (appArgs.pathToOutputFile.size() > 0) {
         // TODO(x)::
-        printOutput(pfaaiQTData, pfaaiImpl, appArgs);
+        printOutput(pfaaiQTData, pfaaiImpl, appArgs, false);
     }
 
     return PFAAI_OK;

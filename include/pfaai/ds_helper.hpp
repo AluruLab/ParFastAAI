@@ -1,7 +1,6 @@
 ///
-// @file helpers.hpp
-// @brief The implementation classes and functions to construct the
-//        data structures.
+// @file ds_helper.hpp
+// @brief The helper functions to construct the data structures.
 // @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
 //
 // Copyright 2024 Georgia Institute of Technology
@@ -410,14 +409,14 @@ struct DataStructHelper {
             assert(nTuples == dsE.threadESize[threadID]);
 #pragma omp barrier
         }
-        run_timer.elapsed().print("E construction      : ", std::cout);
+        PRINT_RUNTIME_MEMUSED(run_timer, " E construction      : ", std::cout);
         // Parallel Sort E TODO(): Sorting speed is inconsistent, why ?
         timer srt_timer;
 #pragma omp single
         {
             parallelMergeSort(dsE.E, 0, dsE.E.size() - 1, 5);
         }
-        srt_timer.elapsed().print("E parallel sorting  : ", std::cout);
+        PRINT_RUNTIME_MEMUSED(srt_timer, "E parallel sorting  : ", std::cout);
         return PFAAI_OK;
     }
 };

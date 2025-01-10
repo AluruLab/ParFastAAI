@@ -1,7 +1,6 @@
 ///
 // @file data_impl.hpp
-// @brief Classes and functions to construct the
-//        data structures for different use cases.
+// @brief Classes to construct the data structures for different use cases.
 // @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
 //
 // Copyright 2024 Georgia Institute of Technology
@@ -27,6 +26,7 @@
 #include <sqlite3.h>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "pfaai/ds_helper.hpp"
@@ -202,7 +202,8 @@ class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
         // Query Set
         std::unordered_map<std::string, IdType> qSet;
         for (std::size_t ix = 0; ix < m_qryGenomeSet.size(); ix++) {
-            qSet[m_qryGenomeSet[ix]] = IdType(ix);
+            qSet.insert(std::make_pair(m_qryGenomeSet[ix], IdType(ix)));
+            // qSet[m_qryGenomeSet[ix]] = IdType(ix);
         }
         //
         // Query and Target lookups and index maps
@@ -477,6 +478,14 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
         if (this->m_errorCode == PFAAI_OK)
             this->m_initFlags["E"] = true;
         return this->m_errorCode;
+    }
+
+    void print_e() const {
+        std::cout << "E array : " << std::endl;
+        for (std::size_t i = 0; i < this->m_pE.E.size(); i++) {
+            fmt::print("{}", this->m_pE.E[i]);
+        }
+        std::cout << std::endl << std::endl;
     }
 };
 

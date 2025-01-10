@@ -1,6 +1,6 @@
 ///
-// @file database.hpp
-// @brief The classes to query data base (sqlite) and populate the
+// @file scp_db.hpp
+// @brief The classes to query SCP database (sqlite) and populate the
 //        data structure arrays.
 // @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
 //

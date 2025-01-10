@@ -141,7 +141,7 @@ template <typename duration> class timer_impl {
         ox.precision(4);
         ox << std::setw(10) << elapsed_to_seconds() << " sec/";
         ox.precision(4);
-        ox << std::setw(10) << elapsed_to_mins() << " min).";
+        ox << std::setw(10) << elapsed_to_mins() << " min)";
         if (line_end)
             ox << std::endl;
     }

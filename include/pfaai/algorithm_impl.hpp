@@ -301,7 +301,7 @@ class ParFAAIImpl {
 #pragma omp barrier
             computeEBlockJAC(threadID);
         }
-        run_timer.elapsed().print("JAC Construction    : ", std::cout);
+        PRINT_RUNTIME_MEMUSED(run_timer, "JAC Construction    : ", std::cout);
         return PFAAI_OK;
     }
 

@@ -1,6 +1,6 @@
 ///
 // @file interface.hpp
-// @brief The interface definition for the database and datastructires,
+// @brief The interface definition for the database and data structures,
 //        and other utilities and error codes.
 // @author Sriram P C <srirampc@gatech.edu>
 //
