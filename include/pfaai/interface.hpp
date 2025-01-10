@@ -1,6 +1,6 @@
 ///
 // @file interface.hpp
-// @brief The interface definition for the database and datastructires,
+// @brief The interface definition for the database and data structures,
 //        and other utilities and error codes.
 // @author Sriram P C <srirampc@gatech.edu>
 //
@@ -23,6 +23,7 @@
 #define PFAAI_INTERFACE_HPP
 
 #include <cassert>
+#include <initializer_list>
 #include <iostream>
 #include <ostream>
 #include <string>
@@ -52,95 +53,37 @@ enum PFAAI_ERROR_CODE {
     }
 
 //
-// Utility Class for Pair with first and second element
-template <typename DT1, typename DT2> struct DPair {
-    DT1 first;
-    DT2 second;
-    explicit DPair(DT1 a, DT2 b) : first(a), second(b) {}
-    DPair() : first(DT1(-1)), second(DT2(-1)) {}
-    DPair(const DPair& other) : first(other.first), second(other.second) {}
-    const DPair& operator=(const DPair& other) {
-        first = other.first;
-        second = other.second;
-        return *this;
-    }
-
-    inline bool operator==(const DPair<DT1, DT2>& other) const {
-        return (first == other.first) && (second == other.second);
-    }
-
-    template <class Archive> void serialize(Archive& archive) {  // NOLINT
-        archive(first, second);
-    }
-};
-
-template <typename DT1, typename DT2>
-std::ostream& operator<<(std::ostream& ox, DPair<DT1, DT2> const& cx) {
-    ox << "(" << cx.first << ", " << cx.second << ")";
-    return ox;
-}
-
-template <typename DT1, typename DT2>
-std::string format_as(DPair<DT1, DT2> const& cx) {
-    return fmt::format("({}, {})", cx.first, cx.second);
-}
-
+// Tuple class with
+//    - genomeA, genomeB
+//    - N (No. entries corresponding to the genome pair)
+//    - S (Sum of entries corresponding to the genome pair)
 //
-// Utility Class for Matrix
-template <typename DT> class DMatrix {
-    std::size_t m_nrows, m_ncols;
-    std::vector<DT> m_data;
+template <typename IdType, typename ValueType = double> struct JACTuple {
+    IdType genomeA;
+    IdType genomeB;
+    ValueType S;
+    IdType N;
 
-  public:
-    explicit DMatrix(std::size_t nrows, std::size_t ncols, DT ivx = DT(0))
-        : m_nrows(nrows), m_ncols(ncols), m_data(nrows * ncols, ivx) {}
-
-    explicit DMatrix(std::size_t nrows, std::size_t ncols, const DT* arr)
-        : m_nrows(nrows), m_ncols(ncols), m_data(arr, arr + (nrows * ncols)) {}
-
-    inline DT& operator()(std::size_t i, std::size_t j) {
-        assert(i < m_nrows);
-        assert(j < m_ncols);
-        return m_data[i * m_ncols + j];
+    inline bool operator==(const JACTuple<IdType, ValueType>& other) const {
+        return (genomeA == other.genomeA) && (genomeB == other.genomeB) &&
+               (N == other.N) && (std::abs(S - other.S) < 1e-7);
     }
 
-    inline DT operator()(std::size_t i, std::size_t j) const {
-        assert(i < m_nrows);
-        assert(j < m_ncols);
-        return m_data[i * m_ncols + j];
-    }
-
-    void resize(std::size_t nrows, std::size_t ncols) {
-        m_nrows = nrows;
-        m_ncols = ncols;
-        m_data.resize(m_nrows * m_ncols);
-    }
-
-    inline bool operator==(const DMatrix<DT>& other) const {
-        return (m_ncols == other.m_ncols && m_nrows == other.m_nrows &&
-                m_data == other.m_data);
-    }
-    //
-    typename std::vector<DT>::iterator row_begin(std::size_t i) {
-        return m_data.begin() + i * m_ncols;
-    }
-    typename std::vector<DT>::iterator row_end(std::size_t i) {
-        return m_data.begin() + (i + 1) * m_ncols;
-    }
-    std::size_t rows() const { return m_nrows; }
-    std::size_t cols() const { return m_ncols; }
-    //
-    const std::vector<DT>& data() const { return m_data; }
-    //
     template <class Archive> void serialize(Archive& archive) {  // NOLINT
-        archive(m_nrows, m_ncols, m_data);
+        archive(genomeA, genomeB, S, N);
     }
 };
 
-template <typename IT>
-std::ostream& operator<<(std::ostream& ox, DMatrix<IT> const& cx) {
-    ox << "{" << cx.rows() << ", " << cx.cols() << ", "
-       << fmt::format("[{}]", fmt::join(cx.data(), ", ")) << "}";
+template <typename IT = int, typename VT = double>
+std::string format_as(const JACTuple<IT, VT>& ijx) {
+    return fmt::format("({:>3d}, {:>3d}, {:>03.2f}, {:>3d})", ijx.genomeA,
+                       ijx.genomeB, ijx.S, ijx.N);
+}
+
+template <typename IT, typename VT>
+std::ostream& operator<<(std::ostream& ox, JACTuple<IT, VT> const& cx) {
+    ox << "(" << cx.genomeA << ", " << cx.genomeB << ", " << cx.S << ", "
+       << cx.N << ")";
     return ox;
 }
 
@@ -190,43 +133,7 @@ std::ostream& operator<<(std::ostream& ox, ETriple<IT> const& cx) {
 }
 
 //
-// Tuple class with
-//    - genomeA, genomeB
-//    - N (No. entries corresponding to the genome pair)
-//    - S (Sum of entries corresponding to the genome pair)
-//
-template <typename IdType, typename ValueType = double> struct JACTuple {
-    IdType genomeA;
-    IdType genomeB;
-    ValueType S;
-    IdType N;
-
-    inline bool operator==(const JACTuple<IdType, ValueType>& other) const {
-        return (genomeA == other.genomeA) && (genomeB == other.genomeB) &&
-               (N == other.N) && (std::abs(S - other.S) < 1e-7);
-    }
-
-    template <class Archive> void serialize(Archive& archive) {  // NOLINT
-        archive(genomeA, genomeB, S, N);
-    }
-};
-
-template <typename IT = int, typename VT = double>
-std::string format_as(const JACTuple<IT, VT>& ijx) {
-    return fmt::format("({:>3d}, {:>3d}, {:>03.2f}, {:>3d})", ijx.genomeA,
-                       ijx.genomeB, ijx.S, ijx.N);
-}
-
-template <typename IT, typename VT>
-std::ostream& operator<<(std::ostream& ox, JACTuple<IT, VT> const& cx) {
-    ox << "(" << cx.genomeA << ", " << cx.genomeB << ", " << cx.S << ", "
-       << cx.N << ")";
-    return ox;
-}
-
-//
-// Class encapsulating the array of triples
-//
+// Class encapsulating the array E, the array of triples
 template <typename IdType> struct EParData {
     using IdTripleT = ETriple<IdType>;
     // tetramer tuples : Array E construction : Phase 2
@@ -238,7 +145,7 @@ template <typename IdType> struct EParData {
 struct DBMetaData {
     std::vector<std::string> proteinSet;
     std::vector<std::string> genomeSet;
-    std::vector<std::string> attGenomeSet;
+    std::vector<std::string> qyGenomeSet;
 };
 
 //
@@ -251,61 +158,42 @@ class DataBaseInterface {
     using IdMatType = IdMatT;
     using ErrCodeType = ErrCodeT;
     using PairIterT = typename std::vector<IdPairType>::iterator;
-    //
+
     DataBaseInterface() {}
-    //
     virtual ~DataBaseInterface() {}
+    
+    //
+    // Getter functions
+    virtual const DBMetaData& getMeta() const = 0;
+    virtual std::string getDBPath() const = 0;
+    virtual ErrCodeType getDBErrorCode() const = 0;
+
     //
     // Functions that open/close validates database
-    virtual inline bool isDBOpen() const = 0;
-    virtual ErrCodeType getDBErrorCode() const = 0;
-    virtual const char* getDBError() const = 0;
-    virtual std::string getDBPath() const = 0;
+    virtual int closeDB() = 0;
     virtual PFAAI_ERROR_CODE validate() const = 0;
-    virtual inline int closeDB() = 0;
+
     //
-    // Function that Queries the database for the number of occurences
+    // Function that Queries the database for the number of occurrences
     // of range tetramers for the given protein.
-    // Assuming that the Lc is a vector of length NTETRAMERS.
-    virtual int
-    queryTetramerOccCounts(const std::string protein, IdType tetramerStart,
-                           IdType tetramerEnd,
-                           std::vector<IdType>& Lc) const = 0;  // NOLINT
+    // Assumes that the Lc is a vector of length NTETRAMERS.
+    virtual int tetramerOccCounts(const std::string protein,
+                                  IdPairType tetraRange,
+                                  std::vector<IdType>& Lc) const = 0;  // NOLINT
     //
     // For a given set of proteins and a range of tetramers,
-    // populates the (protien, genome) pair array.
-    // Assumes that the pair iterator has enough memory locations.
-    // Also returns the number of populated
-    virtual int
-    queryProteinSetGPPairs(const std::vector<std::string>& proteinSet,
-                           IdType tetramerStart, IdType tetramerEnd,
-                           PairIterT iterF, IdType* fCount) const = 0;
+    // populates the (protein, genome) pair array.
+    // Assumes that the pair iterator has been allocated with enough memory.
+    // Also returns the number of populated.
+    virtual int proteinSetGPPairs(IdPairType tetraRange, PairIterT iterF,
+                                  IdType* fCount) const = 0;
     //
-    // Populates the metadata object DBMetaData with the genome set 
-    // and protein set information
-    virtual int queryMetaData(DBMetaData& metaData) const = 0;  // NOLINT
-
-    // Populates the genome set information
-    virtual int
-    queryGenomeSet(std::vector<std::string>& genomeSet) const = 0;  // NOLINT
-
-    // Populates the protein set information
-    virtual int
-    queryProteinSet(std::vector<std::string>& proteinSet) const = 0;  // NOLINT
-
-    //
-    // For a range of proteins among the set of proteins, populates the 
+    // For a range of proteins among the set of proteins, populates the
     // 2-D array such that T(i, j)  contains the number of tetramers for the
     // protein i and genome j.
-    virtual int
-    queryProteinTetramerCounts(const std::vector<std::string>& proteinSet,
-                               IdType proteinStart, IdType proteinEnd,
-                               IdMatType& T) const = 0;  // NOLINT
+    virtual int proteinTetramerCounts(IdPairType proteinRange,
+                                      IdMatType& T) const = 0;  // NOLINT
 };
-
-template <typename IdType>
-using DefaultDBInterface =
-    DataBaseInterface<IdType, DPair<IdType, IdType>, DMatrix<IdType>, int>;
 
 //
 // Data Structure interface
@@ -333,8 +221,8 @@ class DataStructInterface {
     // Data structures
     std::vector<IdType> m_Lc;
     std::vector<IdType> m_Lp;
-    std::vector<IdPairType> m_F;
     IdMatrixType m_T;
+    std::vector<IdPairType> m_F;
     EParData<IdType> m_pE;
 
     // Parameters
@@ -352,32 +240,58 @@ class DataStructInterface {
     //
     virtual ~DataStructInterface() {}
     //
-    // Reference functions to data structures
+    virtual float slack() const { return m_slack; }
+
+    // Reference functions to key data structures
     inline virtual const std::vector<IdType>& refLc() const { return m_Lc; }
     inline virtual const std::vector<IdType>& refLp() const { return m_Lp; }
     inline virtual const IdMatrixType& refT() const { return m_T; }
     inline virtual const std::vector<IdPairType>& refF() const { return m_F; }
     inline virtual const EParData<IdType>& refE() const { return m_pE; }
+
+    // Input data reference
     inline virtual const std::vector<std::string>& refProteinSet() const {
         return m_proteinSet;
     }
-    inline virtual const std::vector<std::string>& refQuerySet() const = 0;
-    inline virtual const std::vector<std::string>& refTargetSet() const = 0;
-    //
-    // Getter functions to dimensions
-    virtual inline IdType nTetramers() const { return NTETRAMERS; }
-    virtual float slack() const { return m_slack; }
+    virtual const std::vector<std::string>& refQuerySet() const = 0;
+    virtual const std::vector<std::string>& refTargetSet() const = 0;
     virtual IdType qrySetSize() const = 0;
     virtual IdType tgtSetSize() const = 0;
-    virtual IdType nGenomePairs() const = 0;
+
     //
-    // Mapper/Validator functions
-    virtual IdType genomePairToIndex(IdType genomeA, IdType genomeB) const = 0;
-    virtual inline IdType mapQueryId(IdType qry) const = 0;
-    virtual inline IdType mapTargetId(IdType tgt) const = 0;
-    virtual bool isQryGenome(IdType genome) const = 0;
-    virtual bool isValidPair(IdType qry, IdType tgt) const = 0;
+    // Getter functions to the dimensions
+    virtual inline IdType nTetramers() const { return NTETRAMERS; }
+    virtual IdType nGenomePairs() const = 0;
+
+    //
+    // Given that a tetramer occurs nQry times in query genome and nTgt times in
+    //   target genome, the function returns the number of tuples that should
+    //   in the E array : array of (protein, genome_A, genome_B) tuples
     virtual IdType countGenomePairs(IdType nQry, IdType nTgt) const = 0;
+
+    //
+    // Indicator functions for genomes :
+    // Accepts genome ids that are used in the 'F' and 'E' array
+    //   - isQryGenome : return true if a genome id is a valid query genome
+    virtual bool isQryGenome(IdType genome) const = 0;
+    //   - isValidPair : returns true if a pair is valid (query, target pair)
+    virtual bool isValidPair(IdType qry, IdType tgt) const = 0;
+
+    //
+    // Jaccard values are computed in a flat JAC Array, JAC is the
+    //     total of the number of genome pairs.
+    // genomePairToIndex: maps a genome id pair to the index in JAC array.
+    virtual IdType genomePairToIndex(IdType genomeA, IdType genomeB) const = 0;
+
+    //
+    // Mapper functions : Used to generate the output Matrix
+    //  -  mapQueryId : maps from the 'genome id used in the data structures' to
+    //  the index in output matrix, specifically, 'column index of the matrix'
+    virtual IdType mapQueryId(IdType qry) const = 0;
+    //  -  mapTargetId : maps from the 'genome id used in the data structures'
+    //  the index in output matrix, specifically, 'row index of the matrix'
+    virtual IdType mapTargetId(IdType tgt) const = 0;
+
     //
     // Construction functions for Data structures
     virtual std::vector<JACType> initJAC() const = 0;
@@ -385,8 +299,10 @@ class DataStructInterface {
     virtual PFAAI_ERROR_CODE constructF() = 0;
     virtual PFAAI_ERROR_CODE constructT() = 0;
     virtual PFAAI_ERROR_CODE constructE() = 0;
+
     //
-    // Main construction function
+    // Main construction function, constructs in the following order:
+    //    Lc -> Lp -> F -> T -> E
     virtual PFAAI_ERROR_CODE construct() {
         timer run_timer;
         m_errorCode = constructL();
@@ -410,6 +326,11 @@ class DataStructInterface {
         return PFAAI_OK;
     }
 };
+
+// Default interfaces
+template <typename IdType>
+using DefaultDBInterface =
+    DataBaseInterface<IdType, DPair<IdType, IdType>, DMatrix<IdType>, int>;
 
 template <typename IdType>
 using DefaultDataStructInterface =

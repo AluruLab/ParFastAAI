@@ -1,0 +1,6 @@
+Xanthomonas_albilineans_GCA_000962915_1.fna.gz
+Xanthomonas_albilineans_GCA_000962935_1.fna.gz
+Xanthomonas_albilineans_GCA_000963025_1.fna.gz
+Xanthomonas_albilineans_GCA_000963155_1.fna.gz
+_Pseudomonas__cissicola_GCA_008801575_1.fna.gz
+X_cissicola_GCA_008801575_1.fna.gz

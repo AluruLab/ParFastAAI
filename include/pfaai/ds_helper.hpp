@@ -1,7 +1,6 @@
 ///
-// @file helpers.hpp
-// @brief The implementation classes and functions to construct the
-//        data structures.
+// @file ds_helper.hpp
+// @brief The helper functions to construct the data structures.
 // @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
 //
 // Copyright 2024 Georgia Institute of Technology
@@ -47,7 +46,7 @@ struct DataStructHelper {
     static PFAAI_ERROR_CODE constructT(const DataStructIfx& dataStructPtr,
                                        const DataBaseIfx& inDBIf,
                                        IdMatrixType& inT) {  // NOLINT
-        // Assuming inT is a initalized matrix of size nProteins x nGenomes
+        // Assuming inT is a initialized matrix of size nProteins x nGenomes
         std::vector<timer> thTimers;
         std::vector<int> errCodes;
 #pragma omp parallel default(none)                                             \
@@ -64,11 +63,10 @@ struct DataStructHelper {
             }
             //
             thTimers[threadID].reset();
-            int proteinStart = BLOCK_LOW(threadID, nThreads, nProteins);
-            int proteinEnd = BLOCK_HIGH(threadID, nThreads, nProteins);
-
-            errCodes[threadID] = inDBIf.queryProteinTetramerCounts(
-                dataStructPtr.refProteinSet(), proteinStart, proteinEnd, inT);
+            IdPairType proteinRange(BLOCK_LOW(threadID, nThreads, nProteins),
+                                    BLOCK_HIGH(threadID, nThreads, nProteins));
+            errCodes[threadID] =
+                inDBIf.proteinTetramerCounts(proteinRange, inT);
             thTimers[threadID].elapsed();
         }
 
@@ -90,20 +88,17 @@ struct DataStructHelper {
         {
             int nThreads = omp_get_num_threads();
             int threadID = omp_get_thread_num();
-            IdType tetraStart =
-                BLOCK_LOW(threadID, nThreads, DataStructIfx::NTETRAMERS);
-            IdType tetraEnd =
-                BLOCK_HIGH(threadID, nThreads, DataStructIfx::NTETRAMERS);
+            IdPairType tetraRange(
+                BLOCK_LOW(threadID, nThreads, DataStructIfx::NTETRAMERS),
+                BLOCK_HIGH(threadID, nThreads, DataStructIfx::NTETRAMERS));
 #pragma omp single
             {
-                errCodes.resize(nThreads, 0);
+                errCodes.resize(nThreads, SQLITE_OK);
             }
-
             for (const std::string& protein : dataStruct.refProteinSet()) {
-                int qryErrCode = inDBIf.queryTetramerOccCounts(
-                    protein, tetraStart, tetraEnd, Lc);
-                if (qryErrCode != SQLITE_OK) {
-                    errCodes[threadID] = qryErrCode;
+                int errCode = inDBIf.tetramerOccCounts(protein, tetraRange, Lc);
+                if (errCode != SQLITE_OK) {
+                    errCodes[threadID] = errCode;
                 }
             }
         }
@@ -153,9 +148,9 @@ struct DataStructHelper {
             }
             thTimers[threadID].reset();
             IdType fBeginOffset = dataStruct.refLp()[tetramerStart[threadID]];
-            errCodes[threadID] = dbIf.queryProteinSetGPPairs(
-                dataStruct.refProteinSet(), tetramerStart[threadID],
-                tetramerEnd[threadID], F.begin() + fBeginOffset, &fCount);
+            errCodes[threadID] = dbIf.proteinSetGPPairs(
+                IdPairType(tetramerStart[threadID], tetramerEnd[threadID]),
+                F.begin() + fBeginOffset, &fCount);
             thTimers[threadID].elapsed();
         }
         if (std::any_of(errCodes.begin(), errCodes.end(),
@@ -414,14 +409,14 @@ struct DataStructHelper {
             assert(nTuples == dsE.threadESize[threadID]);
 #pragma omp barrier
         }
-        run_timer.elapsed().print("E construction      : ", std::cout);
+        PRINT_RUNTIME_MEMUSED(run_timer, " E construction      : ", std::cout);
         // Parallel Sort E TODO(): Sorting speed is inconsistent, why ?
         timer srt_timer;
 #pragma omp single
         {
             parallelMergeSort(dsE.E, 0, dsE.E.size() - 1, 5);
         }
-        srt_timer.elapsed().print("E parallel sorting  : ", std::cout);
+        PRINT_RUNTIME_MEMUSED(srt_timer, "E parallel sorting  : ", std::cout);
         return PFAAI_OK;
     }
 };

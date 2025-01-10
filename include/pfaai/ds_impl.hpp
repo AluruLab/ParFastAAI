@@ -1,7 +1,6 @@
 ///
 // @file data_impl.hpp
-// @brief The helper classes and functions to construct the
-//        data structures for different usage cases.
+// @brief Classes to construct the data structures for different use cases.
 // @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
 //
 // Copyright 2024 Georgia Institute of Technology
@@ -27,9 +26,10 @@
 #include <sqlite3.h>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
-#include "pfaai/helpers.hpp"
+#include "pfaai/ds_helper.hpp"
 #include "pfaai/interface.hpp"
 
 //
@@ -132,13 +132,17 @@ class ParFAAIData : public DefaultDataStructInterface<IdType> {
             std::cerr << "Lc and Lp are not Initialized" << std::endl;
             return (this->m_errorCode = PFAAI_ERR_CONSTRUCT);
         }
-        return (this->m_errorCode =
-                    DSHelper::constructF(*this, m_DBIf, this->m_F));
+        this->m_errorCode = DSHelper::constructF(*this, m_DBIf, this->m_F);
+        if (this->m_errorCode == PFAAI_OK)
+            this->m_initFlags["F"] = true;
+        return this->m_errorCode;
     }
 
     PFAAI_ERROR_CODE constructT() {
-        return (this->m_errorCode =
-                    DSHelper::constructT(*this, m_DBIf, this->m_T));
+        this->m_errorCode = DSHelper::constructT(*this, m_DBIf, this->m_T);
+        if (this->m_errorCode == PFAAI_OK)
+            this->m_initFlags["T"] = true;
+        return this->m_errorCode;
     }
 
     PFAAI_ERROR_CODE constructE() {
@@ -198,7 +202,8 @@ class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
         // Query Set
         std::unordered_map<std::string, IdType> qSet;
         for (std::size_t ix = 0; ix < m_qryGenomeSet.size(); ix++) {
-            qSet[m_qryGenomeSet[ix]] = IdType(ix);
+            qSet.insert(std::make_pair(m_qryGenomeSet[ix], IdType(ix)));
+            // qSet[m_qryGenomeSet[ix]] = IdType(ix);
         }
         //
         // Query and Target lookups and index maps
@@ -332,7 +337,7 @@ class ParFAAIQSubData : public DefaultDataStructInterface<IdType> {
 };
 
 // Class for data structure construction in the case where
-//  AJI is computed for  of genomes are computed with query and target are in 
+//  AJI is computed for  of genomes are computed with query and target are in
 //  two different databases.
 //  TODO(X): Implementation is incomplete
 template <typename IdType>
@@ -367,36 +372,36 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
     explicit ParFAAIQryTgtData(const DBIfx& qtDBIf, const DBMetaData& dbMeta,
                                const std::vector<std::string>& protSet,
                                float slack = Parent::DEFAULT_SLACK_PCT)
-        : Parent(protSet, dbMeta.attGenomeSet.size(), dbMeta.genomeSet.size(),
-                 slack),
+        : Parent(protSet, dbMeta.proteinSet.size(),
+                 dbMeta.genomeSet.size() + dbMeta.qyGenomeSet.size(), slack),
           m_qtDBIf(qtDBIf), m_dbMeta(dbMeta), m_nSharedProteins(protSet.size()),
-          m_nUnionGenomes(dbMeta.genomeSet.size() + dbMeta.attGenomeSet.size()),
+          m_nUnionGenomes(dbMeta.genomeSet.size() + dbMeta.qyGenomeSet.size()),
           m_qryIndicator(m_nUnionGenomes, false),
           m_genomeIndexMap(m_nUnionGenomes, -1) {
         // Initialize query indicators,  index maps
-        IdType nQryGenomes = m_dbMeta.attGenomeSet.size();
         IdType nTgtGenomes = m_dbMeta.genomeSet.size();
-        for (IdType ix = 0; ix < nQryGenomes; ix++) {
-            m_qryIndicator[ix] = true;
+        IdType nQryGenomes = m_dbMeta.qyGenomeSet.size();
+        for (IdType ix = 0; ix < nTgtGenomes; ix++) {
+            m_qryIndicator[ix] = false;
             m_genomeIndexMap[ix] = ix;
         }
-        for (IdType ix = 0; ix < nTgtGenomes; ix++) {
-            m_qryIndicator[nQryGenomes + ix] = false;
-            m_genomeIndexMap[nQryGenomes + ix] = ix;
+        for (IdType ix = 0; ix < nQryGenomes; ix++) {
+            m_qryIndicator[nTgtGenomes + ix] = true;
+            m_genomeIndexMap[nTgtGenomes + ix] = ix;
         }
     }
 
     ~ParFAAIQryTgtData() {}
 
     inline virtual const std::vector<std::string>& refQuerySet() const {
-        return m_dbMeta.attGenomeSet;
+        return m_dbMeta.qyGenomeSet;
     }
     inline virtual const std::vector<std::string>& refTargetSet() const {
         return m_dbMeta.genomeSet;
     }
 
     //
-    inline IdType qrySetSize() const { return m_dbMeta.attGenomeSet.size(); }
+    inline IdType qrySetSize() const { return m_dbMeta.qyGenomeSet.size(); }
     inline IdType tgtSetSize() const { return m_dbMeta.genomeSet.size(); }
     inline IdType nGenomePairs() const { return qrySetSize() * tgtSetSize(); }
     inline IdType nUnionGenomes() const { return m_nUnionGenomes; }
@@ -436,70 +441,23 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
   public:
     //
     virtual PFAAI_ERROR_CODE constructT() {
-        // Older logic : T is constructed seperately for qry and target; merged
-        // TODO(x): modify this with  a  joint database query form 2 databases
-        //
-        //// T is constructed for query and target seperately and merged
-        // this->m_errorCode = DSHelper::constructT(*this, m_qryDBIf,
-        // m_qryT); if (this->m_errorCode != PFAAI_OK) {
-        //     return this->m_errorCode;
-        // }
-        // this->m_errorCode = DSHelper::constructT(*this, m_tgtDBIf,
-        // m_tgtT); if (this->m_errorCode != PFAAI_OK) {
-        //     return this->m_errorCode;
-        // }
-        //// Merge query T and target T
-        ////  First query columns, followed by target columns
-        // #pragma omp parallel for
-        //         for (std::size_t i = 0; i < m_qryT.rows(); i++) {
-        // #pragma omp parallel for
-        //             for (std::size_t j = 0; j < m_qryT.cols(); j++) {
-        //                 this->m_T(i, j) = m_qryT(i, j);
-        //             }
-        //         }
-        // #pragma omp parallel for
-        //         for (std::size_t i = 0; i < m_tgtT.rows(); i++) {
-        // #pragma omp parallel for
-        //             for (std::size_t j = 0; j < m_tgtT.cols(); j++) {
-        //                 this->m_T(i, j) = m_tgtT(i, j);
-        //             }
-        //         }
-        //         //
-        // #pragma omp parallel for
-        //         for (std::size_t i = 0; i < m_qryT.rows(); i++) {
-        // #pragma omp parallel for
-        //             for (std::size_t j = 0; j < m_qryT.cols(); j++) {
-        //                 this->m_T(i, refTargetSet().size() + j) = m_qryT(i,
-        //                 j);
-        //             }
-        //         }
-        //         this->m_initFlags["T"] = true;
+        this->m_errorCode = DSHelper::constructT(*this, m_qtDBIf, this->m_T);
+        if (this->m_errorCode == PFAAI_OK)
+            this->m_initFlags["T"] = true;
         return this->m_errorCode;
     }
 
     //
     virtual PFAAI_ERROR_CODE constructL() {
-
-        // Older logic : L is constructed seperately for qry and target; merged
-        // TODO(x): modify this with  a  joint database query form 2 databases
-        //
-        // // Tetramer counts is summed up from both query and target databases
-        // this->m_errorCode = DSHelper::constructLc(*this, m_tgtDBIf, m_qryLc);
-        // if (this->m_errorCode != PFAAI_OK)
-        //     return this->m_errorCode;
-        // //
-        // this->m_errorCode = DSHelper::constructLc(*this, m_qryDBIf, m_tgtLc);
-        // if (this->m_errorCode != PFAAI_OK)
-        //     return this->m_errorCode;
-
-        // #pragma omp parallel for
-        //         for (IdType ix = 0; ix < this->nTetramers(); ix++) {
-        //             this->m_Lc[ix] = this->m_qryLc[ix] + this->m_tgtLc[ix];
-        //         }
-        //         // Parallel prefix sum on Lc to build Lp
-        //         DSHelper::parallelPrefixSum(this->m_Lc, this->m_Lp);
-        //         this->m_initFlags["L"] = true;
-
+        this->m_errorCode = DSHelper::constructLc(*this, m_qtDBIf, this->m_Lc);
+        if (this->m_errorCode != PFAAI_OK) {
+            std::cerr << "Lc and Lp fail to Initialize" << std::endl;
+            return (this->m_errorCode = PFAAI_ERR_CONSTRUCT);
+        }
+        // Parallel prefix sum on Lc to construct Lp
+        DSHelper::parallelPrefixSum(this->m_Lc, this->m_Lp);
+        assert(this->m_Lp.back() > 0);
+        this->m_initFlags["L"] = true;
         return this->m_errorCode;
     }
 
@@ -509,73 +467,26 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
             std::cerr << "Lc and Lp are not Initialized" << std::endl;
             return PFAAI_ERR_CONSTRUCT;
         }
-        //
-        //  Had a logic with F constructed from each database seperately.
-        //  Realized doesn't work. Need to have a joint query from both the
-        //  databases.
-        //
-        //
-        //        this->m_F.resize(this->m_Lp.back() + this->m_Lc.back(),
-        //                         IdPairType(-1, -1));
-        //        std::vector<IdType> tetramerStart, tetramerEnd, ntSizes;
-        //        std::vector<int> errorCodes;
-        //        std::vector<timer> threadTimers;
-        // #pragma omp parallel default(none)
-        //    shared(tetramerStart, tetramerEnd, errorCodes, threadTimers,
-        //    ntSizes)
-        //        {
-        //            int nThreads = omp_get_num_threads();
-        //            int threadID = omp_get_thread_num();
-        // #pragma omp single
-        //            {
-        //                errorCodes.resize(nThreads, 0);
-        //                threadTimers.resize(nThreads);
-        //                ntSizes = distribute_bags_of_tasks(
-        //                    nThreads, IdType(this->m_F.size()), this->m_Lc,
-        //                    this->m_slack, tetramerStart, tetramerEnd);
-        //            }
-        //            //
-        //            threadTimers[threadID].reset();
-        //            IdType tgtFCount = 0, qryFCount = 0;
-        //            auto threadIter =
-        //                this->m_F.begin() +
-        //                this->m_Lp[tetramerStart[threadID]];
-        //            errorCodes[threadID] = m_tgtDBIf.queryProteinSetGPPairs(
-        //                this->refProteinSet(), tetramerStart[threadID],
-        //                tetramerEnd[threadID], threadIter, &tgtFCount);
-        //            //
-        //            threadIter += tgtFCount;
-        //            errorCodes[threadID] = m_qryDBIf.queryProteinSetGPPairs(
-        //                this->refProteinSet(), tetramerStart[threadID],
-        //                tetramerEnd[threadID], threadIter, &qryFCount);
-        //            assert(qryFCount + tgtFCount == ntSizes[threadID]);
-        //            //
-        //            // Increment the genome ids of query db with target Genome
-        //            Size for (auto qIter = threadIter; qIter != threadIter +
-        //            qryFCount;
-        //                 qIter++) {
-        //                (*qIter).second += m_tgtDBMeta.genomeSet.size();
-        //            }
-        //            threadTimers[threadID].elapsed();
-        //        }
-        //        if (std::any_of(errorCodes.begin(), errorCodes.end(),
-        //                        [](int rc) { return rc != SQLITE_OK; }))
-        //            return (this->m_errorCode = PFAAI_ERR_CONSTRUCT);
-        //        //
-        //        // printThreadTimes(" F construction : ", threadTimers);
-        //        //
-        //        this->m_initFlags["F"] = true;
-        return PFAAI_OK;
-    }
-
-    PFAAI_ERROR_CODE constructE() {
-        // this->m_errorCode = DSHelper::constructE(*this, this->m_pE);
-        // if (this->m_errorCode == PFAAI_OK)
-        //     this->m_initFlags["E"] = true;
+        this->m_errorCode = DSHelper::constructF(*this, m_qtDBIf, this->m_F);
+        if (this->m_errorCode == PFAAI_OK)
+            this->m_initFlags["F"] = true;
         return this->m_errorCode;
     }
 
-    // virtual PFAAI_ERROR_CODE construct() { constructL(); }
+    PFAAI_ERROR_CODE constructE() {
+        this->m_errorCode = DSHelper::constructE(*this, this->m_pE);
+        if (this->m_errorCode == PFAAI_OK)
+            this->m_initFlags["E"] = true;
+        return this->m_errorCode;
+    }
+
+    void print_e() const {
+        std::cout << "E array : " << std::endl;
+        for (std::size_t i = 0; i < this->m_pE.E.size(); i++) {
+            fmt::print("{}", this->m_pE.E[i]);
+        }
+        std::cout << std::endl << std::endl;
+    }
 };
 
 #endif  // !PAR_FAST_AAI_DATA_H

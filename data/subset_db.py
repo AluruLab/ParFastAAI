@@ -44,10 +44,13 @@ class DBSubsetBuilder:
         self.tab_names = pd.read_sql(
             "SELECT name FROM sqlite_schema WHERE type='table'", self.src_conn
         )
-        self.protein_df = pd.read_sql("SELECT scp_acc from 'scp_data'", self.src_conn)
+        self.protein_df = pd.read_sql("SELECT scp_acc from 'scp_data'",
+                                      self.src_conn)
         self.protien_names = set(self.protein_df["SCP_acc"].tolist())
+        print("No. of Proteins : ", len(self.protien_names))
         #
-        self.genome_rdf = pd.read_sql("SELECT * from genome_metadata", self.src_conn)
+        self.genome_rdf = pd.read_sql("SELECT * from genome_metadata",
+                                      self.src_conn)
         self.scp_df = pd.read_sql("SELECT * from scp_data", self.src_conn)
         #
         self.gselect_df = self.genome_rdf[
@@ -78,8 +81,11 @@ class DBSubsetBuilder:
             return np.extract(np.isin(row_nx, ids_select), row_nx)
 
         def map_to_ids(row_nx):
-            return np.array(sorted([ids_map[y] for y in row_nx if y in ids_map]),
-                            dtype=np.int32)
+            return np.array(
+                sorted([ids_map[y] for y in row_nx if y in ids_map]),
+                dtype=np.int32
+            )
+
         #
         tetras_df["genomes"] = (
             tetras_df["genomes"]
@@ -113,8 +119,10 @@ class DBSubsetBuilder:
         self.dst_conn.commit()
 
     def subset_tetras_table(self, table_name):
-        tetras_df = pd.read_sql("SELECT * from '{}'".format(table_name), self.src_conn)
-        tetras_df = self.subset_tetras_df(tetras_df, self.select_ids, self.c2s_map)
+        tetras_df = pd.read_sql("SELECT * from '{}'".format(table_name),
+                                self.src_conn)
+        tetras_df = self.subset_tetras_df(tetras_df, self.select_ids,
+                                          self.c2s_map)
         self.create_tetras_table(table_name, tetras_df)
 
     # Step 2: Update genomes table
@@ -160,7 +168,7 @@ class DBSubsetBuilder:
         )
         genomes_df = genomes_df.reset_index(drop=True)
         self.create_genomes_table(table_name, genomes_df)
- 
+
     #
     # Step 3: Update scp_data table
     def create_scp_data(self):
@@ -169,6 +177,7 @@ class DBSubsetBuilder:
             self.c2s_map  # type:ignore
         )
         uscp_df.reset_index(drop=True)
+        # print(self.scp_df.shape, uscp_df.shape)
         # drop_stmt = "DROP TABLE '{}'".format("scp_data")
         # self.src_conn.execute(sqlac.text(drop_stmt))
         # self.src_conn.commit()
@@ -184,7 +193,6 @@ class DBSubsetBuilder:
         )
         self.dst_conn.commit()
 
-
     # Step 4: Update genome_metadata table
     def create_genome_meta_data(self):
         ugenomes_df = self.genome_rdf[
@@ -195,9 +203,9 @@ class DBSubsetBuilder:
         )
         ugenomes_df = ugenomes_df.reset_index(drop=True)
         print(ugenomes_df)
-        #drop_stmt = "DROP TABLE '{}'".format("genome_metadata")
-        #self.src_conn.execute(sqlac.text(drop_stmt))
-        #self.src_conn.commit()
+        # drop_stmt = "DROP TABLE '{}'".format("genome_metadata")
+        # self.src_conn.execute(sqlac.text(drop_stmt))
+        # self.src_conn.commit()
 
         create_stmt = "CREATE TABLE IF NOT EXISTS 'genome_metadata' (genome_name TEXT, genome_id INTEGER PRIMARY KEY, genome_length INTEGER, genome_class INTEGER, SCP_count INTEGER);"
         self.dst_conn.execute(sqlac.text(create_stmt))
@@ -230,8 +238,10 @@ class DBSubsetBuilder:
             index=False,
             # index_label="genome_id",
             if_exists="append",
-            dtype={"protein_number": sqlacts.INTEGER,
-                   "protein_string": sqlacts.VARCHAR},  # type:ignore
+            dtype={
+                "protein_number": sqlacts.INTEGER,
+                "protein_string": sqlacts.VARCHAR,
+            },  # type:ignore
         )
         self.dst_conn.commit()
         #
@@ -242,18 +252,19 @@ class DBSubsetBuilder:
             index=False,
             # index_label="genome_id",
             if_exists="append",
-            dtype={"protein_string": sqlacts.VARCHAR,
-                   "protein_number": sqlacts.INTEGER},
+            dtype={
+                "protein_string": sqlacts.VARCHAR,
+                "protein_number": sqlacts.INTEGER,
+            },
         )
         self.dst_conn.commit()
- 
 
     def run(self):
         self.create_genome_meta_data()
         self.create_scp_data()
         self.create_prtein_indices()
-        for px in self.protien_names:
-            print("Processing : ", px)
+        for ix, px in enumerate(self.protien_names):
+            print("Processing : ", ix, px)
             self.subset_tetras_table(px + "_tetras")
             self.subset_genomes_table(px + "_genomes")
 
@@ -283,6 +294,18 @@ rsubset2 = [
     "Xanthomonas_albilineans_GCA_000963155_1.fna.gz",
     "_Pseudomonas__cissicola_GCA_008801575_1.fna.gz",
 ]
+rsubset12_loc = "./xdb_subset_combo12.db"
+rsubset12 = [
+    "Xanthomonas_albilineans_GCA_000962915_1.fna.gz",
+    "Xanthomonas_albilineans_GCA_000962945_1.fna.gz",
+    "Xanthomonas_albilineans_GCA_000963065_1.fna.gz",
+    "Xanthomonas_albilineans_GCA_000963195_1.fna.gz",
+    "Xanthomonas_albilineans_GCA_000962925_1.fna.gz",
+    "Xanthomonas_albilineans_GCA_000963025_1.fna.gz",
+    "Xanthomonas_albilineans_GCA_000963155_1.fna.gz",
+    "_Pseudomonas__cissicola_GCA_008801575_1.fna.gz",
+]
 if __name__ == "__main__":
     gen_subset_db(source_db, rsubset1_loc, rsubset1)
     gen_subset_db(source_db, rsubset2_loc, rsubset2)
+    gen_subset_db(source_db, rsubset12_loc, rsubset12)
