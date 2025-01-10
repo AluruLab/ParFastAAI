@@ -53,97 +53,37 @@ enum PFAAI_ERROR_CODE {
     }
 
 //
-// Utility Class for Pair with first and second element
-template <typename DT1, typename DT2> struct DPair {
-    DT1 first;
-    DT2 second;
-    explicit DPair(DT1 a, DT2 b) : first(a), second(b) {}
-    DPair() : first(DT1(-1)), second(DT2(-1)) {}
-    DPair(std::initializer_list<DT1> l)
-        : first(*l.begin()), second(*(l.begin() + 1)) {}
-    DPair(const DPair& other) : first(other.first), second(other.second) {}
-    const DPair& operator=(const DPair& other) {
-        first = other.first;
-        second = other.second;
-        return *this;
-    }
-
-    inline bool operator==(const DPair<DT1, DT2>& other) const {
-        return (first == other.first) && (second == other.second);
-    }
-
-    template <class Archive> void serialize(Archive& archive) {  // NOLINT
-        archive(first, second);
-    }
-};
-
-template <typename DT1, typename DT2>
-std::ostream& operator<<(std::ostream& ox, DPair<DT1, DT2> const& cx) {
-    ox << "(" << cx.first << ", " << cx.second << ")";
-    return ox;
-}
-
-template <typename DT1, typename DT2>
-std::string format_as(DPair<DT1, DT2> const& cx) {
-    return fmt::format("({}, {})", cx.first, cx.second);
-}
-
+// Tuple class with
+//    - genomeA, genomeB
+//    - N (No. entries corresponding to the genome pair)
+//    - S (Sum of entries corresponding to the genome pair)
 //
-// Utility Class for Matrix
-template <typename DT> class DMatrix {
-    std::size_t m_nrows, m_ncols;
-    std::vector<DT> m_data;
+template <typename IdType, typename ValueType = double> struct JACTuple {
+    IdType genomeA;
+    IdType genomeB;
+    ValueType S;
+    IdType N;
 
-  public:
-    explicit DMatrix(std::size_t nrows, std::size_t ncols, DT ivx = DT(0))
-        : m_nrows(nrows), m_ncols(ncols), m_data(nrows * ncols, ivx) {}
-
-    explicit DMatrix(std::size_t nrows, std::size_t ncols, const DT* arr)
-        : m_nrows(nrows), m_ncols(ncols), m_data(arr, arr + (nrows * ncols)) {}
-
-    inline DT& operator()(std::size_t i, std::size_t j) {
-        assert(i < m_nrows);
-        assert(j < m_ncols);
-        return m_data[i * m_ncols + j];
+    inline bool operator==(const JACTuple<IdType, ValueType>& other) const {
+        return (genomeA == other.genomeA) && (genomeB == other.genomeB) &&
+               (N == other.N) && (std::abs(S - other.S) < 1e-7);
     }
 
-    inline DT operator()(std::size_t i, std::size_t j) const {
-        assert(i < m_nrows);
-        assert(j < m_ncols);
-        return m_data[i * m_ncols + j];
-    }
-
-    void resize(std::size_t nrows, std::size_t ncols) {
-        m_nrows = nrows;
-        m_ncols = ncols;
-        m_data.resize(m_nrows * m_ncols);
-    }
-
-    inline bool operator==(const DMatrix<DT>& other) const {
-        return (m_ncols == other.m_ncols && m_nrows == other.m_nrows &&
-                m_data == other.m_data);
-    }
-    //
-    typename std::vector<DT>::iterator row_begin(std::size_t i) {
-        return m_data.begin() + i * m_ncols;
-    }
-    typename std::vector<DT>::iterator row_end(std::size_t i) {
-        return m_data.begin() + (i + 1) * m_ncols;
-    }
-    std::size_t rows() const { return m_nrows; }
-    std::size_t cols() const { return m_ncols; }
-    //
-    const std::vector<DT>& data() const { return m_data; }
-    //
     template <class Archive> void serialize(Archive& archive) {  // NOLINT
-        archive(m_nrows, m_ncols, m_data);
+        archive(genomeA, genomeB, S, N);
     }
 };
 
-template <typename IT>
-std::ostream& operator<<(std::ostream& ox, DMatrix<IT> const& cx) {
-    ox << "{" << cx.rows() << ", " << cx.cols() << ", "
-       << fmt::format("[{}]", fmt::join(cx.data(), ", ")) << "}";
+template <typename IT = int, typename VT = double>
+std::string format_as(const JACTuple<IT, VT>& ijx) {
+    return fmt::format("({:>3d}, {:>3d}, {:>03.2f}, {:>3d})", ijx.genomeA,
+                       ijx.genomeB, ijx.S, ijx.N);
+}
+
+template <typename IT, typename VT>
+std::ostream& operator<<(std::ostream& ox, JACTuple<IT, VT> const& cx) {
+    ox << "(" << cx.genomeA << ", " << cx.genomeB << ", " << cx.S << ", "
+       << cx.N << ")";
     return ox;
 }
 
@@ -192,40 +132,7 @@ std::ostream& operator<<(std::ostream& ox, ETriple<IT> const& cx) {
     return ox;
 }
 
-//
-// Tuple class with
-//    - genomeA, genomeB
-//    - N (No. entries corresponding to the genome pair)
-//    - S (Sum of entries corresponding to the genome pair)
-//
-template <typename IdType, typename ValueType = double> struct JACTuple {
-    IdType genomeA;
-    IdType genomeB;
-    ValueType S;
-    IdType N;
 
-    inline bool operator==(const JACTuple<IdType, ValueType>& other) const {
-        return (genomeA == other.genomeA) && (genomeB == other.genomeB) &&
-               (N == other.N) && (std::abs(S - other.S) < 1e-7);
-    }
-
-    template <class Archive> void serialize(Archive& archive) {  // NOLINT
-        archive(genomeA, genomeB, S, N);
-    }
-};
-
-template <typename IT = int, typename VT = double>
-std::string format_as(const JACTuple<IT, VT>& ijx) {
-    return fmt::format("({:>3d}, {:>3d}, {:>03.2f}, {:>3d})", ijx.genomeA,
-                       ijx.genomeB, ijx.S, ijx.N);
-}
-
-template <typename IT, typename VT>
-std::ostream& operator<<(std::ostream& ox, JACTuple<IT, VT> const& cx) {
-    ox << "(" << cx.genomeA << ", " << cx.genomeB << ", " << cx.S << ", "
-       << cx.N << ")";
-    return ox;
-}
 
 //
 // Class encapsulating the array of triples
@@ -254,7 +161,6 @@ class DataBaseInterface {
     using IdMatType = IdMatT;
     using ErrCodeType = ErrCodeT;
     using PairIterT = typename std::vector<IdPairType>::iterator;
-    typedef IdType (*MapperFnT)(IdType);
 
     DataBaseInterface() {}
     virtual ~DataBaseInterface() {}
@@ -341,7 +247,7 @@ class DataStructInterface {
     //
     virtual float slack() const { return m_slack; }
 
-    // Reference functions to data structures
+    // Reference functions to key data structures
     inline virtual const std::vector<IdType>& refLc() const { return m_Lc; }
     inline virtual const std::vector<IdType>& refLp() const { return m_Lp; }
     inline virtual const IdMatrixType& refT() const { return m_T; }

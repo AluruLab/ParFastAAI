@@ -32,8 +32,8 @@
 
 #include "fmt/core.h"
 #include "pfaai/algorithm_impl.hpp"
-#include "pfaai/data_impl.hpp"
-#include "pfaai/database.hpp"
+#include "pfaai/ds_impl.hpp"
+#include "pfaai/scp_db.hpp"
 #include "pfaai/interface.hpp"
 
 using IdType = int;
@@ -41,8 +41,8 @@ using ValueType = double;
 
 using IdPairType = DPair<IdType, IdType>;
 using IdMatrixType = DMatrix<IdType>;
-using SQLiteIfT = SQLiteInterface<IdType, DatabaseNames>;
-using QTSQLiteIfT = QTSQLiteInterface<IdType, DatabaseNames>;
+using SQLiteDBT = SQLiteSCPDataBase<IdType, DatabaseNames>;
+using QTSQLiteDBT = QTSQLiteSCPDataBase<IdType, DatabaseNames>;
 using PFImpl = ParFAAIImpl<IdType, ValueType>;
 
 using PFDSInterface = DefaultDataStructInterface<IdType>;
@@ -184,7 +184,7 @@ void printOutput(const PFDSInterface& pfdata, const PFImpl& impl,
 
 int parallel_fastaai(const AppParams& pfaaiAppArgs) {
     // Initialize databases
-    SQLiteIfT sqltIf(pfaaiAppArgs.pathToDatabase);
+    SQLiteDBT sqltIf(pfaaiAppArgs.pathToDatabase);
     PFAAI_ERROR_CODE errorCode = sqltIf.validate();
     if (errorCode != PFAAI_OK) {
         return errorCode;
@@ -211,7 +211,7 @@ int parallel_fastaai(const AppParams& pfaaiAppArgs) {
 
 int parallel_subset_fastaai(const AppParams& pfaaiAppArgs) {
     // Initialize databases
-    SQLiteIfT sqltIf(pfaaiAppArgs.pathToDatabase);
+    SQLiteDBT sqltIf(pfaaiAppArgs.pathToDatabase);
     PFAAI_ERROR_CODE errorCode = sqltIf.validate();
     if (errorCode != PFAAI_OK) {
         return errorCode;
@@ -244,7 +244,7 @@ int parallel_qry2tgt_fastaai(const AppParams& pfaaiAppArgs) {
     std::cout << "Implementation NOT Complete " << std::endl;
     return 0;
     // Initialize databases
-    QTSQLiteIfT qtDBIf(pfaaiAppArgs.pathToDatabase,
+    QTSQLiteDBT qtDBIf(pfaaiAppArgs.pathToDatabase,
                        pfaaiAppArgs.pathToQryDatabase);
     PFAAI_ERROR_CODE qErrCode = qtDBIf.validate();
     if (qErrCode != PFAAI_OK) {

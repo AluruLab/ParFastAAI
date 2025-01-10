@@ -27,6 +27,8 @@
 #include <ratio>  // NOLINT
 #include <string>
 #include <vector>
+#include <cassert>
+#include <fmt/format.h>
 
 /// macros for block decomposition
 #define BLOCK_LOW(i, p, n) ((i * n) / p)
@@ -196,5 +198,101 @@ void print_memory_usage(const std::string& prt_prefix, std::ostream& ox) {
         r_timer.measure_accumulate_print(sprefix, ostream, false);             \
         print_memory_usage<uint64_t>("; ", std::cout);                         \
     }
+
+//
+// Utility Class for Pair with first and second element
+template <typename DT1, typename DT2> struct DPair {
+    DT1 first;
+    DT2 second;
+    explicit DPair(DT1 a, DT2 b) : first(a), second(b) {}
+    DPair() : first(DT1(-1)), second(DT2(-1)) {}
+    DPair(std::initializer_list<DT1> l)
+        : first(*l.begin()), second(*(l.begin() + 1)) {}
+    DPair(const DPair& other) : first(other.first), second(other.second) {}
+    const DPair& operator=(const DPair& other) {
+        first = other.first;
+        second = other.second;
+        return *this;
+    }
+
+    inline bool operator==(const DPair<DT1, DT2>& other) const {
+        return (first == other.first) && (second == other.second);
+    }
+
+    template <class Archive> void serialize(Archive& archive) {  // NOLINT
+        archive(first, second);
+    }
+};
+
+template <typename DT1, typename DT2>
+std::ostream& operator<<(std::ostream& ox, DPair<DT1, DT2> const& cx) {
+    ox << "(" << cx.first << ", " << cx.second << ")";
+    return ox;
+}
+
+template <typename DT1, typename DT2>
+std::string format_as(DPair<DT1, DT2> const& cx) {
+    return fmt::format("({}, {})", cx.first, cx.second);
+}
+
+//
+// Utility Class for Matrix
+template <typename DT> class DMatrix {
+    std::size_t m_nrows, m_ncols;
+    std::vector<DT> m_data;
+
+  public:
+    explicit DMatrix(std::size_t nrows, std::size_t ncols, DT ivx = DT(0))
+        : m_nrows(nrows), m_ncols(ncols), m_data(nrows * ncols, ivx) {}
+
+    explicit DMatrix(std::size_t nrows, std::size_t ncols, const DT* arr)
+        : m_nrows(nrows), m_ncols(ncols), m_data(arr, arr + (nrows * ncols)) {}
+
+    inline DT& operator()(std::size_t i, std::size_t j) {
+        assert(i < m_nrows);
+        assert(j < m_ncols);
+        return m_data[i * m_ncols + j];
+    }
+
+    inline DT operator()(std::size_t i, std::size_t j) const {
+        assert(i < m_nrows);
+        assert(j < m_ncols);
+        return m_data[i * m_ncols + j];
+    }
+
+    void resize(std::size_t nrows, std::size_t ncols) {
+        m_nrows = nrows;
+        m_ncols = ncols;
+        m_data.resize(m_nrows * m_ncols);
+    }
+
+    inline bool operator==(const DMatrix<DT>& other) const {
+        return (m_ncols == other.m_ncols && m_nrows == other.m_nrows &&
+                m_data == other.m_data);
+    }
+    //
+    typename std::vector<DT>::iterator row_begin(std::size_t i) {
+        return m_data.begin() + i * m_ncols;
+    }
+    typename std::vector<DT>::iterator row_end(std::size_t i) {
+        return m_data.begin() + (i + 1) * m_ncols;
+    }
+    std::size_t rows() const { return m_nrows; }
+    std::size_t cols() const { return m_ncols; }
+    //
+    const std::vector<DT>& data() const { return m_data; }
+    //
+    template <class Archive> void serialize(Archive& archive) {  // NOLINT
+        archive(m_nrows, m_ncols, m_data);
+    }
+};
+
+template <typename IT>
+std::ostream& operator<<(std::ostream& ox, DMatrix<IT> const& cx) {
+    ox << "{" << cx.rows() << ", " << cx.cols() << ", "
+       << fmt::format("[{}]", fmt::join(cx.data(), ", ")) << "}";
+    return ox;
+}
+
 
 #endif  // !UTILS_HPP

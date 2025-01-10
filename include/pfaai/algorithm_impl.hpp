@@ -1,7 +1,7 @@
 ///
 // @file algorithm_impl.hpp
-// @brief The helper classes and functions to construct the
-//        data structures for different usage cases.
+// @brief Implements the parallel FastAAI algorithm. 
+//        Algorithm details in the docs/ folder.
 // @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
 //
 // Copyright 2024 Georgia Institute of Technology

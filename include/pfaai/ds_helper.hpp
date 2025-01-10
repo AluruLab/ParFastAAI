@@ -64,11 +64,10 @@ struct DataStructHelper {
             }
             //
             thTimers[threadID].reset();
-            int proteinStart = BLOCK_LOW(threadID, nThreads, nProteins);
-            int proteinEnd = BLOCK_HIGH(threadID, nThreads, nProteins);
-
-            errCodes[threadID] = inDBIf.proteinTetramerCounts(
-                IdPairType(proteinStart, proteinEnd), inT);
+            IdPairType proteinRange(BLOCK_LOW(threadID, nThreads, nProteins),
+                                    BLOCK_HIGH(threadID, nThreads, nProteins));
+            errCodes[threadID] =
+                inDBIf.proteinTetramerCounts(proteinRange, inT);
             thTimers[threadID].elapsed();
         }
 

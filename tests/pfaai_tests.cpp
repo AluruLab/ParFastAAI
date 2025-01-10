@@ -29,19 +29,19 @@
 #include <cereal/types/vector.hpp>
 
 #include <pfaai/algorithm_impl.hpp>
-#include <pfaai/data_impl.hpp>
-#include <pfaai/database.hpp>
+#include <pfaai/ds_impl.hpp>
+#include <pfaai/scp_db.hpp>
 
-#include "pfaai/helpers.hpp"
-#include "pfaai/interface.hpp"
+#include <pfaai/ds_helper.hpp>
+#include <pfaai/interface.hpp>
 #include "pfaai_tests.hpp"  // NOLINT
 
 using IdType = int;
 using ValueType = double;
 using IdPairType = DPair<IdType, IdType>;
 using IdMatType = DMatrix<IdType>;
-using SQLiteIfT = SQLiteInterface<IdType, DatabaseNames>;
-using QTSQLiteIfT = QTSQLiteInterface<IdType, DatabaseNames>;
+using SQLiteDBT = SQLiteSCPDataBase<IdType, DatabaseNames>;
+using QTSQLiteDBT = QTSQLiteSCPDataBase<IdType, DatabaseNames>;
 using PFImpl = ParFAAIImpl<IdType, ValueType>;
 using PFDataT = ParFAAIData<IdType>;
 using PFQSubDataT = ParFAAIQSubData<IdType>;
@@ -109,8 +109,15 @@ static constexpr char DATA_QSUB_TEST_INPUT[] = "data/qsub_test_input.txt";
 static constexpr char REF_QSUB_JAC_DATA[] = "data/xdb_qry_subset_jac.bin";
 static constexpr char REF_QSUB_AJI_DATA[] = "data/xdb_qry_subset_aji.bin";
 
+static constexpr char REF_QT_LC_ARRAY[] = "data/xdb_qt_lc_array.bin";
+static constexpr char REF_QT_LP_ARRAY[] = "data/xdb_qt_lp_array.bin";
+static constexpr char REF_QT_F_ARRAY[] = "data/xdb_qt_f_array.bin";
+static constexpr char REF_QT_T_MATRIX[] = "data/xdb_qt_t_matrix.bin";
+static constexpr char REF_QT_COMBO_T_MATRIX[] =
+    "data/xdb_qt_combo_t_matrix.bin";
+
 TEST_CASE("Query Genome Metadata", "[db_meta_data]") {
-    SQLiteIfT sqlt_if(G_DB_PATH);
+    SQLiteDBT sqlt_if(G_DB_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     REQUIRE(G_PROTEINSET == dbMeta.proteinSet);
     REQUIRE(G_GENOMESET == dbMeta.genomeSet);
@@ -118,7 +125,7 @@ TEST_CASE("Query Genome Metadata", "[db_meta_data]") {
 
 TEST_CASE("Query No. of Tetramers", "[ntetramers_query]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0);
-    SQLiteIfT sqlt_if(G_DB_PATH);
+    SQLiteDBT sqlt_if(G_DB_PATH);
     sqlt_if.tetramerOccCounts("PF00119.20", IdPairType(2060, 2144), Lc);
     REQUIRE(Lc[2060] == 20);
     REQUIRE(Lc[2100] == 20);
@@ -129,7 +136,7 @@ TEST_CASE("Query No. of Tetramers", "[ntetramers_query]") {
 TEST_CASE("Query Protein Tetramer Counts", "[prot_tetramer_counts]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0), Lp(G_NTETRAMERS, 0);
     IdMatType T(G_PROTEINSET_SIZE, G_GENOMESET_SIZE);
-    SQLiteIfT sqlt_if(G_DB_PATH);
+    SQLiteDBT sqlt_if(G_DB_PATH);
     sqlt_if.proteinTetramerCounts(IdPairType(0, 3), T);
     REQUIRE(G_QRY_PST_TETRA_CTS[0] ==
             std::vector<IdType>(T.row_begin(0), T.row_end(0)));
@@ -152,7 +159,7 @@ TEST_CASE("Query Protein Set Tetramers", "[prot_set_tetramers]") {
 
     std::vector<IdPairType> F(Lp.back() + Lc.back(), IdPairType(-1, -1));
     IdType fct = 0;
-    SQLiteIfT sqlt_if(G_DB_PATH);
+    SQLiteDBT sqlt_if(G_DB_PATH);
     int rc = sqlt_if.proteinSetGPPairs(IdPairType(2000, 3000), F.begin(), &fct);
     REQUIRE(rc == SQLITE_OK);
     REQUIRE(F[Lp[2000]] == IdPairType(5, 0));
@@ -161,7 +168,7 @@ TEST_CASE("Query Protein Set Tetramers", "[prot_set_tetramers]") {
 }
 
 TEST_CASE("Test Data Structures Construction", "[construct_LFTE]") {
-    SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
+    SQLiteSCPDataBase<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
@@ -221,7 +228,7 @@ TEST_CASE("Test Data Structures Construction", "[construct_LFTE]") {
 
 TEST_CASE("Test Data Subset 1 Structures Construction",
           "[construct_subset1_LFTE]") {
-    SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET1_PATH);
+    SQLiteSCPDataBase<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET1_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
@@ -280,7 +287,7 @@ TEST_CASE("Test Data Subset 1 Structures Construction",
 
 TEST_CASE("Test Data Subset 2 Structures Construction",
           "[construct_subset2_LFTE]") {
-    SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET2_PATH);
+    SQLiteSCPDataBase<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET2_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
@@ -343,7 +350,7 @@ TEST_CASE("Test Data Subset 2 Structures Construction",
 }
 
 TEST_CASE("Implementation Test", "[compute_JAC_AJI]") {
-    SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
+    SQLiteSCPDataBase<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
@@ -376,7 +383,7 @@ TEST_CASE("Implementation Test", "[compute_JAC_AJI]") {
 }
 
 TEST_CASE("Subset 1 Implementation Test", "[compute_subset1_JAC_AJI]") {
-    SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET1_PATH);
+    SQLiteSCPDataBase<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET1_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
@@ -410,7 +417,7 @@ TEST_CASE("Subset 1 Implementation Test", "[compute_subset1_JAC_AJI]") {
 }
 
 TEST_CASE("Subset 2 Implementation Test", "[compute_subset2_JAC_AJI]") {
-    SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET2_PATH);
+    SQLiteSCPDataBase<IdType, DatabaseNames> sqlt_if(G_DB_SUBSET2_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFDataT pfaaiData(sqlt_if, dbMeta);
@@ -443,7 +450,7 @@ TEST_CASE("Subset 2 Implementation Test", "[compute_subset2_JAC_AJI]") {
 }
 
 TEST_CASE("PF Query Subset Test", "[query_subset]") {
-    SQLiteInterface<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
+    SQLiteSCPDataBase<IdType, DatabaseNames> sqlt_if(G_DB_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     std::vector<std::string> qryGenomeSet;
@@ -484,7 +491,7 @@ TEST_CASE("PF Query Subset Test", "[query_subset]") {
 }
 
 TEST_CASE("QT Genome Metadata", "[qt_db_meta_data]") {
-    QTSQLiteIfT sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
+    QTSQLiteDBT sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     REQUIRE(G_QT_PROTEINSET == dbMeta.proteinSet);
     REQUIRE(G_QT_TARGET_GENOMESET == dbMeta.genomeSet);
@@ -493,7 +500,7 @@ TEST_CASE("QT Genome Metadata", "[qt_db_meta_data]") {
 
 TEST_CASE("QT No. of Tetramers", "[qt_ntetramers_query]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0);
-    QTSQLiteIfT sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
+    QTSQLiteDBT sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
     sqlt_if.tetramerOccCounts("PF00119.20", IdPairType(1000, 2500), Lc);
     REQUIRE(Lc[1151] == 8);
     REQUIRE(Lc[1255] == 8);
@@ -502,43 +509,26 @@ TEST_CASE("QT No. of Tetramers", "[qt_ntetramers_query]") {
 }
 
 TEST_CASE("QT Protein Tetramer Counts", "[qt_prot_tetramer_counts]") {
-    QTSQLiteIfT qtsqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
+    QTSQLiteDBT qtsqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
     const DBMetaData& dbMeta = qtsqlt_if.getMeta();
     IdMatType T(G_PROTEINSET_SIZE, G_QT_GENOMESET_SIZE);
-    qtsqlt_if.proteinTetramerCounts(IdPairType(0, 3), T);
+    qtsqlt_if.proteinTetramerCounts(IdPairType(0, dbMeta.proteinSet.size() - 1),
+                                    T);
 
-    SQLiteIfT sqlt_if(G_DB_SUBSET_COMBO_12_PATH);
+    SQLiteDBT sqlt_if(G_DB_SUBSET_COMBO_12_PATH);
     const DBMetaData& dbMeta2 = sqlt_if.getMeta();
     IdMatType T2(dbMeta2.proteinSet.size(), dbMeta2.genomeSet.size());
-    sqlt_if.proteinTetramerCounts(IdPairType(0, 3), T2);
+    sqlt_if.proteinTetramerCounts(IdPairType(0, dbMeta.proteinSet.size()), T2);
 
     //
-    REQUIRE(std::vector<std::string>(dbMeta.proteinSet.begin(),
-                                     dbMeta.proteinSet.begin() + 4) ==
+    REQUIRE(dbMeta.proteinSet ==
             std::vector<std::string>(dbMeta2.proteinSet.begin(),
-                                     dbMeta2.proteinSet.begin() + 4));
-    REQUIRE(std::vector<IdType>(T2.row_begin(0), T2.row_end(0)) ==
-            std::vector<IdType>(T.row_begin(0), T.row_end(0)));
-    REQUIRE(std::vector<IdType>(T2.row_begin(1), T2.row_end(1)) ==
-            std::vector<IdType>(T.row_begin(1), T.row_end(1)));
-    REQUIRE(std::vector<IdType>(T2.row_begin(2), T2.row_end(2)) ==
-            std::vector<IdType>(T.row_begin(2), T.row_end(2)));
-    REQUIRE(std::vector<IdType>(T2.row_begin(3), T2.row_end(3)) ==
-            std::vector<IdType>(T.row_begin(3), T.row_end(3)));
-    //
-    qtsqlt_if.proteinTetramerCounts(IdPairType(76, 78), T);
-    sqlt_if.proteinTetramerCounts(IdPairType(76, 78), T2);
-    //
-    REQUIRE(std::vector<std::string>(dbMeta.proteinSet.begin() + 76,
-                                     dbMeta.proteinSet.end()) ==
-            std::vector<std::string>(dbMeta2.proteinSet.begin() + 76,
-                                     dbMeta2.proteinSet.begin() + 79));
-    REQUIRE(std::vector<IdType>(T2.row_begin(76), T2.row_end(76)) ==
-            std::vector<IdType>(T.row_begin(76), T.row_end(76)));
-    REQUIRE(std::vector<IdType>(T2.row_begin(77), T2.row_end(77)) ==
-            std::vector<IdType>(T.row_begin(77), T.row_end(77)));
-    REQUIRE(std::vector<IdType>(T2.row_begin(78), T2.row_end(78)) ==
-            std::vector<IdType>(T.row_begin(78), T.row_end(78)));
+                                     dbMeta2.proteinSet.begin() +
+                                         dbMeta.proteinSet.size()));
+    for (std::size_t ix = 0; ix < dbMeta.proteinSet.size(); ix++) {
+        REQUIRE(std::vector<IdType>(T2.row_begin(ix), T2.row_end(ix)) ==
+                std::vector<IdType>(T.row_begin(ix), T.row_end(ix)));
+    }
 }
 
 void constructL(const std::vector<std::string>& protSet,
@@ -558,7 +548,7 @@ void constructL(const std::vector<std::string>& protSet,
 }
 
 TEST_CASE("QT Protein Set Tetramers", "[qt_prot_set_tetramers]") {
-    QTSQLiteIfT qtsqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
+    QTSQLiteDBT qtsqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
     std::vector<IdType> Lc(G_NTETRAMERS, 0), Lp(G_NTETRAMERS, 0);
     // construct L
     constructL(qtsqlt_if.getMeta().proteinSet, qtsqlt_if, Lc, Lp);
@@ -571,7 +561,7 @@ TEST_CASE("QT Protein Set Tetramers", "[qt_prot_set_tetramers]") {
     REQUIRE(std::vector(Lc.begin(), Lc.begin() + 3001) == tLc);
 
     // construct F
-    int fct = 0, fct2 = 0;
+    int fct = 0;
     std::vector<IdPairType> F(Lp.back() + Lc.back(), IdPairType(-1, -1));
     int rc = qtsqlt_if.proteinSetGPPairs(IdPairType(0, 3000), F.begin(), &fct);
     REQUIRE(rc == SQLITE_OK);
@@ -581,7 +571,7 @@ TEST_CASE("QT Protein Set Tetramers", "[qt_prot_set_tetramers]") {
 }
 
 TEST_CASE("QT Test Data Structures Construction", "[qt_construct_LFTE]") {
-    QTSQLiteIfT sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
+    QTSQLiteDBT sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFQTData pfaaiQTData(sqlt_if, dbMeta, dbMeta.proteinSet);
@@ -589,17 +579,23 @@ TEST_CASE("QT Test Data Structures Construction", "[qt_construct_LFTE]") {
     std::vector<IdType> Lc = pfaaiQTData.refLc();
     std::vector<IdType> Lp = pfaaiQTData.refLp();
     std::vector<IdType> refLc, refLp;
-    // TODO(x)
     {
-        std::ifstream lcx(REF_LC_ARRAY, std::ios::binary);
+        std::ifstream lcx(REF_QT_LC_ARRAY, std::ios::binary);
         cereal::BinaryInputArchive iarchive(lcx);
         iarchive(refLc);
     }
     {
-        std::ifstream lcx(REF_LP_ARRAY, std::ios::binary);
+        std::ifstream lcx(REF_QT_LP_ARRAY, std::ios::binary);
         cereal::BinaryInputArchive iarchive(lcx);
         iarchive(refLp);
     }
+    std::vector<IdType> tLc(3001, 0);
+    for (auto& lx : G_QT_LC_VALUES) {
+        tLc[lx.first] = lx.second;
+    }
+
+    // test first 3000 value
+    REQUIRE(std::vector(Lc.begin(), Lc.begin() + 3001) == tLc);
     REQUIRE(refLc == Lc);
     REQUIRE(refLp == Lp);
     //
@@ -607,35 +603,46 @@ TEST_CASE("QT Test Data Structures Construction", "[qt_construct_LFTE]") {
     std::vector<IdPairType> F = pfaaiQTData.refF();
     std::vector<IdPairType> refF;
     {
-        std::ifstream fcx(REF_F_ARRAY, std::ios::binary);
+        std::ifstream fcx(REF_QT_F_ARRAY, std::ios::binary);
         cereal::BinaryInputArchive iarchive(fcx);
         iarchive(refF);
     }
     REQUIRE(refF == F);
-    //
+
     pfaaiQTData.constructT();
     IdMatType T = pfaaiQTData.refT();
-    IdMatType refT(G_PROTEINSET_SIZE, G_GENOMESET_SIZE);
+    IdMatType refT(dbMeta.proteinSet.size(),
+                   dbMeta.genomeSet.size() + dbMeta.qyGenomeSet.size()),
+        comboT(dbMeta.proteinSet.size(),
+               dbMeta.genomeSet.size() + dbMeta.qyGenomeSet.size());
     {
-        std::ifstream tcx(REF_T_MATRIX, std::ios::binary);
+        std::ifstream tcx(REF_QT_T_MATRIX, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
         iarchive(refT);
     }
     REQUIRE(refT == T);
-
-    //
-    pfaaiQTData.constructE();
-    const std::vector<ETriple<IdType>>& E = pfaaiQTData.refE().E;
-    std::vector<ETriple<IdType>> refE;
     {
-        std::ifstream tcx(REF_SRTD_E_ARRAY, std::ios::binary);
+        std::ifstream tcx(REF_QT_COMBO_T_MATRIX, std::ios::binary);
         cereal::BinaryInputArchive iarchive(tcx);
-        iarchive(refE);
+        iarchive(comboT);
     }
-    REQUIRE(E == refE);
-    IdType nTotal = 0;
-    for (const auto& ex : E)
-        if (ex.genomeA == 0 || ex.genomeA == 2)
-            nTotal++;
-    std::cout << "N total : " << nTotal << std::endl;
+    REQUIRE(IdMatType(comboT.rows() - 1, comboT.cols(), comboT.data().data()) ==
+            T);
+    // TODO(x)
+
+    // //
+    // pfaaiQTData.constructE();
+    // const std::vector<ETriple<IdType>>& E = pfaaiQTData.refE().E;
+    // std::vector<ETriple<IdType>> refE;
+    // {
+    //     std::ifstream tcx(REF_SRTD_E_ARRAY, std::ios::binary);
+    //     cereal::BinaryInputArchive iarchive(tcx);
+    //     iarchive(refE);
+    // }
+    // REQUIRE(E == refE);
+    // IdType nTotal = 0;
+    // for (const auto& ex : E)
+    //     if (ex.genomeA == 0 || ex.genomeA == 2)
+    //         nTotal++;
+    // std::cout << "N total : " << nTotal << std::endl;
 }

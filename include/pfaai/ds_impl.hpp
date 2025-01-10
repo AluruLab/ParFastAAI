@@ -1,7 +1,7 @@
 ///
 // @file data_impl.hpp
-// @brief The helper classes and functions to construct the
-//        data structures for different usage cases.
+// @brief Classes and functions to construct the
+//        data structures for different use cases.
 // @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
 //
 // Copyright 2024 Georgia Institute of Technology
@@ -29,7 +29,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "pfaai/helpers.hpp"
+#include "pfaai/ds_helper.hpp"
 #include "pfaai/interface.hpp"
 
 //
@@ -371,8 +371,8 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
     explicit ParFAAIQryTgtData(const DBIfx& qtDBIf, const DBMetaData& dbMeta,
                                const std::vector<std::string>& protSet,
                                float slack = Parent::DEFAULT_SLACK_PCT)
-        : Parent(protSet, dbMeta.qyGenomeSet.size(), dbMeta.genomeSet.size(),
-                 slack),
+        : Parent(protSet, dbMeta.proteinSet.size(),
+                 dbMeta.genomeSet.size() + dbMeta.qyGenomeSet.size(), slack),
           m_qtDBIf(qtDBIf), m_dbMeta(dbMeta), m_nSharedProteins(protSet.size()),
           m_nUnionGenomes(dbMeta.genomeSet.size() + dbMeta.qyGenomeSet.size()),
           m_qryIndicator(m_nUnionGenomes, false),
@@ -478,8 +478,6 @@ class ParFAAIQryTgtData : public DefaultDataStructInterface<IdType> {
             this->m_initFlags["E"] = true;
         return this->m_errorCode;
     }
-
-    // virtual PFAAI_ERROR_CODE construct() { constructL(); }
 };
 
 #endif  // !PAR_FAST_AAI_DATA_H
