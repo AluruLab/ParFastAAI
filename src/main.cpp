@@ -22,7 +22,6 @@
 #include <cstdio>
 #include <iostream>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 #include <CLI/CLI.hpp>
@@ -30,25 +29,28 @@
 #include <omp.h>
 #include <sqlite3.h>
 
-#include "fmt/core.h"
 #include "pfaai/algorithm_impl.hpp"
 #include "pfaai/ds_impl.hpp"
-#include "pfaai/scp_db.hpp"
 #include "pfaai/interface.hpp"
+#include "pfaai/scp_db.hpp"
 
 using IdType = int;
 using ValueType = double;
-
 using IdPairType = DPair<IdType, IdType>;
 using IdMatrixType = DMatrix<IdType>;
-using SQLiteDBT = SQLiteSCPDataBase<IdType, DatabaseNames>;
-using QTSQLiteDBT = QTSQLiteSCPDataBase<IdType, DatabaseNames>;
-using PFImpl = ParFAAIImpl<IdType, ValueType>;
 
+// database classes
+using SQLiteDB = SQLiteSCPDataBase<IdType, DatabaseNames>;
+using QTSQLiteDB = QTSQLiteSCPDataBase<IdType, DatabaseNames>;
+
+// data structure classes
 using PFDSInterface = DefaultDataStructInterface<IdType>;
 using PFData = ParFAAIData<IdType>;
 using PFQSubData = ParFAAIQSubData<IdType>;
 using PFQTData = ParFAAIQryTgtData<IdType>;
+
+// algorithm implementation
+using PFImpl = ParFAAIImpl<IdType, ValueType>;
 
 struct AppParams {
     CLI::App app;
@@ -76,9 +78,9 @@ struct AppParams {
                "-s,--separator", outFieldSeparator,
                "Field Separator in the output file [Optional (default: ,)].")
             ->capture_default_str();
-        app.add_option(
-               "-q,--query_subset", pathToQrySubsetFile,
-               "Path to Query List (Should be subset of genomoes in the input DB.)")
+        app.add_option("-q,--query_subset", pathToQrySubsetFile,
+                       "Path to Query List (Should be subset of genomoes in "
+                       "the input DB.)")
             ->check(CLI::ExistingFile);
     }
 
@@ -125,20 +127,8 @@ struct AppParams {
     }
 };
 
-void print_aji(const PFDSInterface& dsif,
-               const std::vector<PFImpl::JACType>& cJAC,
-               const std::vector<ValueType>& cAJI) {
-    std::cout << "AJI Ouput : " << std::endl;
-    std::cout << " [(GP1, GP2,   SUM, NCP) ->  AJI]" << std::endl;
-    for (std::size_t i = 0; i < cAJI.size(); i++) {
-        fmt::print(" [{}, {} -> {:03.2f}] \n",
-                   dsif.genomePairToIndex(cJAC[i].genomeA, cJAC[i].genomeB),
-                   cJAC[i], cAJI[i]);
-    }
-}
-
 void printOutput(const PFDSInterface& pfdata, const PFImpl& impl,
-                 const AppParams& pfaaiAppArgs) {
+                 const AppParams& appArgs) {
     IdType nQryGenomes = pfdata.qrySetSize();
     IdType nTgtGeneomes = pfdata.tgtSetSize();
     //
@@ -160,31 +150,31 @@ void printOutput(const PFDSInterface& pfdata, const PFImpl& impl,
         }
     }
 
-    // std::ofstream ofx(pathToOutputFile);
-    FILE* fpx = fopen(pfaaiAppArgs.pathToOutputFile.c_str(), "w");
+    // std::ofstream fpx(appArgs.pathToOutputFile);
+    FILE* fpx = fopen(appArgs.pathToOutputFile.c_str(), "w");
 
     const auto& tgtRef = pfdata.refTargetSet();
     // Header
-    fmt::print(fpx, "{}{}\n", pfaaiAppArgs.outFieldSeparator,
-               fmt::join(tgtRef.begin(), tgtRef.end(),
-                         pfaaiAppArgs.outFieldSeparator));
+    fmt::print(
+        fpx, "{}{}\n", appArgs.outFieldSeparator,
+        fmt::join(tgtRef.begin(), tgtRef.end(), appArgs.outFieldSeparator));
 
     // Data
     const std::vector<ValueType>& ajiMatData = ajiMatrix.data();
     for (std::size_t i = 0; i < ajiMatrix.rows(); i++) {
         fmt::print(fpx, "{}{}", pfdata.refQuerySet()[i],
-                   pfaaiAppArgs.outFieldSeparator);
+                   appArgs.outFieldSeparator);
         fmt::print(fpx, "{}\n",
                    fmt::join(ajiMatData.begin() + i * nTgtGeneomes,
                              ajiMatData.begin() + (i + 1) * nTgtGeneomes,
-                             pfaaiAppArgs.outFieldSeparator));
+                             appArgs.outFieldSeparator));
     }
     fclose(fpx);
 }
 
-int parallel_fastaai(const AppParams& pfaaiAppArgs) {
+int parallel_fastaai(const AppParams& appArgs) {
     // Initialize databases
-    SQLiteDBT sqltIf(pfaaiAppArgs.pathToDatabase);
+    SQLiteDB sqltIf(appArgs.pathToDatabase);
     PFAAI_ERROR_CODE errorCode = sqltIf.validate();
     if (errorCode != PFAAI_OK) {
         return errorCode;
@@ -201,24 +191,23 @@ int parallel_fastaai(const AppParams& pfaaiAppArgs) {
     PFImpl pfaaiImpl(pfaaiData);
     pfaaiImpl.run();
 #ifndef NDEBUG
-    print_aji(pfaaiData, pfaaiImpl.getJAC(), pfaaiImpl.getAJI());
+    pfaaiImpl.print_aji();
 #endif
-    if (pfaaiAppArgs.pathToOutputFile.size() > 0) {
-        printOutput(pfaaiData, pfaaiImpl, pfaaiAppArgs);
+    if (appArgs.pathToOutputFile.size() > 0) {
+        printOutput(pfaaiData, pfaaiImpl, appArgs);
     }
     return PFAAI_OK;
 }
 
-int parallel_subset_fastaai(const AppParams& pfaaiAppArgs) {
+int parallel_subset_fastaai(const AppParams& appArgs) {
     // Initialize databases
-    SQLiteDBT sqltIf(pfaaiAppArgs.pathToDatabase);
+    SQLiteDB sqltIf(appArgs.pathToDatabase);
     PFAAI_ERROR_CODE errorCode = sqltIf.validate();
     if (errorCode != PFAAI_OK) {
         return errorCode;
     }
-    const DBMetaData& dbMeta = sqltIf.getMeta();
     //
-    PFQSubData pfaaiData(sqltIf, dbMeta, pfaaiAppArgs.qryGenomeSet);
+    PFQSubData pfaaiData(sqltIf, sqltIf.getMeta(), appArgs.qryGenomeSet);
     // PHASE 1: Construction of the data structures
     PFAAI_ERROR_CODE pfErrorCode = pfaaiData.construct();
     sqltIf.closeDB();
@@ -231,60 +220,41 @@ int parallel_subset_fastaai(const AppParams& pfaaiAppArgs) {
     pfaaiImpl.run();
 #ifndef NDEBUG
     // pfaaiImpl.print_e();
-    print_aji(pfaaiData, pfaaiImpl.getJAC(), pfaaiImpl.getAJI());
+    pfaaiImpl.print_aji();
 #endif
-    if (pfaaiAppArgs.pathToOutputFile.size() > 0) {
-        printOutput(pfaaiData, pfaaiImpl, pfaaiAppArgs);
+    if (appArgs.pathToOutputFile.size() > 0) {
+        printOutput(pfaaiData, pfaaiImpl, appArgs);
     }
     return PFAAI_OK;
 }
 
-int parallel_qry2tgt_fastaai(const AppParams& pfaaiAppArgs) {
+int parallel_qry2tgt_fastaai(const AppParams& appArgs) {
     //
-    std::cout << "Implementation NOT Complete " << std::endl;
-    return 0;
-    // Initialize databases
-    QTSQLiteDBT qtDBIf(pfaaiAppArgs.pathToDatabase,
-                       pfaaiAppArgs.pathToQryDatabase);
+    // Initialize databases and Meta data query
+    QTSQLiteDB qtDBIf(appArgs.pathToDatabase, appArgs.pathToQryDatabase);
     PFAAI_ERROR_CODE qErrCode = qtDBIf.validate();
     if (qErrCode != PFAAI_OK) {
         return qErrCode;
     }
-    // Meta data query
-    const DBMetaData& dbMeta = qtDBIf.getMeta();
-    //
-    std::unordered_set<std::string> unionProtiens;
-    std::vector<std::string> sharedProtiens;
 
-    // TODO(x):: get shared proteins ?
-    //
-    // for (const auto& sx : qryDbMeta.proteinSet) {
-    //     unionProtiens.insert(sx);
-    // }
-    // for (const auto& sx : tgtDbMeta.proteinSet) {
-    //     if (unionProtiens.find(sx) != unionProtiens.end()) {
-    //         sharedProtiens.emplace_back(sx);
-    //     } else {
-    //         unionProtiens.insert(sx);
-    //     }
-    // }
-
-    PFQTData pfaaiQTData(qtDBIf, dbMeta, sharedProtiens);
     // PHASE 1: Construction of the data structures
+    const DBMetaData& dbMeta = qtDBIf.getMeta();
+    PFQTData pfaaiQTData(qtDBIf, dbMeta, dbMeta.proteinSet);
     PFAAI_ERROR_CODE pfErrorCode = pfaaiQTData.construct();
     qtDBIf.closeDB();
     if (pfErrorCode != PFAAI_OK) {
         return pfErrorCode;
     }
-    // Run parallel Fast AAI algorithm
+
+    // PHASE 2: Run parallel Fast AAI algorithm
     PFImpl pfaaiImpl(pfaaiQTData);
     pfaaiImpl.run();
 #ifndef NDEBUG
-    print_aji(pfaaiQTData, pfaaiImpl.getJAC(), pfaaiImpl.getAJI());
+    pfaaiImpl.print_aji();
 #endif
-    if (pfaaiAppArgs.pathToOutputFile.size() > 0) {
+    if (appArgs.pathToOutputFile.size() > 0) {
         // TODO(x)::
-        printOutput(pfaaiQTData, pfaaiImpl, pfaaiAppArgs);
+        printOutput(pfaaiQTData, pfaaiImpl, appArgs);
     }
 
     return PFAAI_OK;

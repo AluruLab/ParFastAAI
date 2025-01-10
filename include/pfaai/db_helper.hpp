@@ -22,19 +22,37 @@
 #ifndef DATABASE_HELPER_HPP
 #define DATABASE_HELPER_HPP
 
-#include "pfaai/interface.hpp"
 #include <cstddef>
-#include <fmt/format.h>
 #include <iostream>
 #include <string>
+#include <vector>
+
+#include <fmt/format.h>
 #include <sqlite3.h>
-#
 
 struct SQLiteHelper {
-    static sqlite3* initDB(const std::string dbPath, int* errorCode) {
+    static inline sqlite3* initDB(const std::string& dbPath, int* errorCode) {
         sqlite3* db;
         *errorCode = sqlite3_open(dbPath.c_str(), &db);
         return db;
+    }
+
+    static inline const char* displayDBError(int dbErrorCode) {
+        if (dbErrorCode == SQLITE_OK) {
+            return "NO Error Message Available";
+        }
+        const char* errMsg = sqlite3_errstr(dbErrorCode);
+        std::cerr << "DB ERROR: " << errMsg << std::endl;
+        return errMsg;
+    }
+
+    static inline int closeDB(const std::string& dbPath, sqlite3* sqltDbPtr) {
+        if (sqltDbPtr == nullptr) {
+            std::cerr << "Database already closed : " << dbPath
+                      << std::endl;
+            return -1;
+        }
+        return sqlite3_close(sqltDbPtr);
     }
 
     // Function to query set of genomes in sqlite db
@@ -200,4 +218,4 @@ struct SQLiteHelper {
     }
 };
 
-#endif // DATABASE_HELPER_HPP
+#endif  // DATABASE_HELPER_HPP

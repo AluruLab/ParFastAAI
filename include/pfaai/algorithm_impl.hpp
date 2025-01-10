@@ -1,6 +1,6 @@
 ///
 // @file algorithm_impl.hpp
-// @brief Implements the parallel FastAAI algorithm. 
+// @brief Implements the parallel FastAAI algorithm.
 //        Algorithm details in the docs/ folder.
 // @author Sriram P C <srirampc@gatech.edu>, Hoang Le <hanh9@gatech.edu>
 //
@@ -19,7 +19,6 @@
 // limitations under the License.
 ///
 
-
 #ifndef PFAAI_ALGORITHM_HPP
 #define PFAAI_ALGORITHM_HPP
 
@@ -36,19 +35,21 @@
 
 //
 // Implements the Parallel Fast AAI algorithm
-template <typename IdType, typename ValueType> class ParFAAIImpl {
+template <typename IdType, typename ValueType,
+          typename DSIT = DefaultDataStructInterface<IdType>>
+class ParFAAIImpl {
   public:
-    using IdPairType = DPair<IdType, IdType>;
-    using IdMatrixType = DMatrix<IdType>;
-    using JACType = JACTuple<IdType, ValueType>;
-    using DSIfx = DefaultDataStructInterface<IdType>;
+    using IdPairType = typename DSIT::IdPairType;
+    using IdMatrixType = typename DSIT::IdMatrixType;
+    using JACType = typename DSIT::JACType;
+    using DSIfx = DSIT;
     using IdTriple = ETriple<IdType>;
 
   private:
     // Data references
     const DSIfx& c_pfDSRef;
-    const std::vector<int>& c_Lc;
-    const std::vector<int>& c_Lp;
+    const std::vector<IdType>& c_Lc;
+    const std::vector<IdType>& c_Lp;
     const std::vector<IdPairType>& c_F;
     const IdMatrixType& c_T;
     const EParData<IdType>& c_pE;
@@ -95,7 +96,6 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
     }
 
   protected:
-
     // distribute genome pairs across nThreads
     void distributeGenomePairs(const int& threadID, const int& nThreads) {
         if (threadID < m_nGenomePairs % nThreads) {
@@ -277,7 +277,6 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
     }
 
   public:
-
     // function to compute JAC in parallel
     int computeJAC() {
         timer run_timer;
@@ -343,6 +342,17 @@ template <typename IdType, typename ValueType> class ParFAAIImpl {
                        m_genomePairEStartIndex[i], m_genomePairEEndIndex[i]);
         }
         std::cout << std::endl << std::endl;
+    }
+
+    void print_aji() const {
+        std::cout << "AJI Ouput : " << std::endl;
+        std::cout << " [(GP1, GP2,   SUM, NCP) ->  AJI]" << std::endl;
+        for (std::size_t i = 0; i < m_JAC.size(); i++) {
+            fmt::print(
+                " [{}, {} -> {:03.2f}] \n",
+                c_pfDSRef.genomePairToIndex(m_JAC[i].genomeA, m_JAC[i].genomeB),
+                m_AJI[i], m_AJI[i]);
+        }
     }
 };
 

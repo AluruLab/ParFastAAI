@@ -30,8 +30,8 @@
 #include <string>
 #include <vector>
 
-#include "pfaai/interface.hpp"
 #include "pfaai/db_helper.hpp"
+#include "pfaai/interface.hpp"
 
 // Names definition of the database
 struct DatabaseNames {
@@ -84,60 +84,37 @@ class SQLiteSCPDataBase : public DefaultDBInterface<IdType> {
     using PairIterT = typename ParentT::PairIterT;
 
     explicit SQLiteSCPDataBase(const std::string dbPath,
-                             DBNameType dbn = DBNameType())
+                               DBNameType dbn = DBNameType())
         : m_pathToDb(dbPath),
           m_sqltDbPtr(SQLiteHelper::initDB(dbPath, &m_dbErrorCode)),
           m_dbNames(dbn), m_dbMeta(dbMetaData()) {}
-
-    // Functions to open/close/validate database connections
-    virtual inline bool isDBOpen() const {
-        return m_dbErrorCode == SQLITE_OK && m_sqltDbPtr != nullptr;
-    }
-
-    virtual inline std::string getDBPath() const { return m_pathToDb; }
-
-    virtual inline const char* getDBError() const {
-        if (m_dbErrorCode == SQLITE_OK) {
-            if (m_sqltDbPtr == NULL) {
-                return "SQLite is unable to allocate memory for the database ";
-            }
-            return "NO Error Message Available";
-        }
-        return sqlite3_errstr(m_dbErrorCode);
-    }
-
-    virtual inline int closeDB() {
-        if (m_sqltDbPtr == nullptr) {
-            std::cerr << "Database already closed : " << m_pathToDb
-                      << std::endl;
-            return m_dbErrorCode;
-        }
-        m_dbErrorCode = sqlite3_close(m_sqltDbPtr);
-        m_sqltDbPtr = nullptr;
-        return m_dbErrorCode;
-    }
-
-    virtual int getDBErrorCode() const { return m_dbErrorCode; }
-
-    const DBMetaData& getMeta() const { return m_dbMeta; }
-
-    PFAAI_ERROR_CODE validate() const {
-        if (!isDBOpen()) {
-            std::cerr << "Error in opening " << getDBPath() << std::endl;
-            std::cerr << "DB ERROR: " << getDBError() << std::endl;
-
-            if (getDBError())
-                return PFAAI_ERR_SQLITE_MEM_ALLOC;
-            else
-                return PFAAI_ERR_SQLITE_DB;
-        }
-        return PFAAI_OK;
-    }
 
     virtual ~SQLiteSCPDataBase() {
         if (m_dbErrorCode == SQLITE_OK && m_sqltDbPtr != nullptr) {
             closeDB();
         }
+    }
+
+    // getter functions
+    virtual inline int getDBErrorCode() const { return m_dbErrorCode; }
+    virtual inline std::string getDBPath() const { return m_pathToDb; }
+    const DBMetaData& getMeta() const { return m_dbMeta; }
+
+    // Functions to close database connections and validate
+    virtual inline int closeDB() {
+        m_dbErrorCode = SQLiteHelper::closeDB(m_pathToDb, m_sqltDbPtr);
+        m_sqltDbPtr = nullptr;
+        m_dbErrorCode = SQLITE_OK;
+        return m_dbErrorCode;
+    }
+
+    virtual inline PFAAI_ERROR_CODE validate() const {
+        if (m_dbErrorCode != SQLITE_OK || m_sqltDbPtr == nullptr) {
+            std::cerr << "Error in opening " << getDBPath() << std::endl;
+            SQLiteHelper::displayDBError(m_dbErrorCode);
+            return PFAAI_ERR_SQLITE_DB;
+        }
+        return PFAAI_OK;
     }
 
     // Function to query and load counts in the tetramer counts array, Lc
@@ -289,39 +266,6 @@ class SQLiteSCPDataBase : public DefaultDBInterface<IdType> {
 // Interface to two different SQLite databases -- one query and one target
 template <typename IdType, typename DBNameType>
 class QTSQLiteSCPDataBase : public DefaultDBInterface<IdType> {
-    std::string m_pathToTgtDb, m_pathToQryDb;
-    sqlite3* m_sqltDbPtr;
-    DBNameType m_dbNames;
-    int m_errorCode;
-    DBMetaData m_dbMeta;
-    IdType m_qryGenomeIdOffset;
-
-    DBMetaData dbMetaData() {
-        DBMetaData dbMeta;
-        m_errorCode = SQLiteHelper::qtDBProteinSet(
-            m_dbNames, m_sqltDbPtr,
-            fmt::format("`{}`.{}", c_dbAlias[DBIndicator::target_db],
-                        m_dbNames.SCPDTAB),
-            fmt::format("`{}`.{}", c_dbAlias[DBIndicator::query_db],
-                        m_dbNames.SCPDTAB),
-            dbMeta.proteinSet);
-        if (m_errorCode == SQLITE_OK) {
-            m_errorCode = SQLiteHelper::dbGenomeSet(
-                m_dbNames, m_sqltDbPtr,
-                fmt::format("`{}`.{}", c_dbAlias[DBIndicator::target_db],
-                            m_dbNames.GMTTAB),
-                dbMeta.genomeSet);
-        }
-        if (m_errorCode == SQLITE_OK) {
-            m_errorCode = SQLiteHelper::dbGenomeSet(
-                m_dbNames, m_sqltDbPtr,
-                fmt::format("`{}`.{}", c_dbAlias[DBIndicator::query_db],
-                            m_dbNames.GMTTAB),
-                dbMeta.qyGenomeSet);
-        }
-        return dbMeta;
-    }
-
   public:
     using ParentT = DefaultDBInterface<IdType>;
     using IdPairType = typename ParentT::IdPairType;
@@ -330,100 +274,40 @@ class QTSQLiteSCPDataBase : public DefaultDBInterface<IdType> {
         target_db = 0,
         query_db = 1,
     };
-    const char* c_dbAlias[2] = {"main", "QueryDB"};
 
-    explicit QTSQLiteSCPDataBase(const std::string& tgtDBPath,
-                               const std::string& qryDBPath,
-                               DBNameType dbn = DBNameType())
-        : m_pathToTgtDb(tgtDBPath), m_pathToQryDb(qryDBPath),
-          m_sqltDbPtr(SQLiteHelper::initDB(tgtDBPath, &m_errorCode)),
-          m_dbNames(dbn) {
-        if (m_errorCode) {
-            getDBError();
-            return;
+  private:
+    std::string m_pathToTgtDb, m_pathToQryDb;
+    sqlite3* m_sqltDbPtr;
+    DBNameType m_dbNames;
+    int m_dbErrorCode;
+    DBMetaData m_dbMeta;
+    IdType m_qryGenomeIdOffset;
+
+    DBMetaData dbMetaData() {
+        DBMetaData dbMeta;
+        m_dbErrorCode = SQLiteHelper::qtDBProteinSet(
+            m_dbNames, m_sqltDbPtr,
+            fmt::format("`{}`.{}", c_dbAlias[DBIndicator::target_db],
+                        m_dbNames.SCPDTAB),
+            fmt::format("`{}`.{}", c_dbAlias[DBIndicator::query_db],
+                        m_dbNames.SCPDTAB),
+            dbMeta.proteinSet);
+        if (m_dbErrorCode == SQLITE_OK) {
+            m_dbErrorCode = SQLiteHelper::dbGenomeSet(
+                m_dbNames, m_sqltDbPtr,
+                fmt::format("`{}`.{}", c_dbAlias[DBIndicator::target_db],
+                            m_dbNames.GMTTAB),
+                dbMeta.genomeSet);
         }
-
-        // Attach database
-        const std::string attachSQL =
-            fmt::format("ATTACH DATABASE '{}' as {} ;", m_pathToQryDb,
-                        c_dbAlias[DBIndicator::query_db]);
-        m_errorCode = sqlite3_exec(m_sqltDbPtr, attachSQL.c_str(), nullptr,
-                                   nullptr, nullptr);
-        if (m_errorCode) {
-            std::cerr << "Error in attaching query database : " << m_pathToQryDb
-                      << std::endl;
-            std::cerr << "SQL Error: " << sqlite3_errmsg(m_sqltDbPtr);
-            return;
+        if (m_dbErrorCode == SQLITE_OK) {
+            m_dbErrorCode = SQLiteHelper::dbGenomeSet(
+                m_dbNames, m_sqltDbPtr,
+                fmt::format("`{}`.{}", c_dbAlias[DBIndicator::query_db],
+                            m_dbNames.GMTTAB),
+                dbMeta.qyGenomeSet);
         }
-
-        m_dbMeta = dbMetaData();
-        //  Initalize target and query id mappers
-        m_qryGenomeIdOffset = m_dbMeta.genomeSet.size();
+        return dbMeta;
     }
-
-    virtual inline bool isDBOpen() const {
-        return m_errorCode == SQLITE_OK && m_sqltDbPtr != nullptr;
-    }
-
-    virtual inline std::string getDBPath() const { return m_pathToQryDb; }
-
-    virtual inline const char* getDBError() const {
-        if (m_errorCode == SQLITE_OK) {
-            if (m_sqltDbPtr == NULL) {
-                return "SQLite is unable to allocate memory for the database ";
-            }
-            return "NO Error Message Available";
-        }
-        return sqlite3_errstr(m_errorCode);
-    }
-
-    virtual inline int closeDB() {
-        if (m_sqltDbPtr == nullptr) {
-            std::cerr << "Database already closed : " << m_pathToQryDb
-                      << std::endl;
-            return m_errorCode;
-        }
-        // Detach database
-        const std::string detachSQL = fmt::format(
-            "DETACH DATABASE '{}' ;", c_dbAlias[DBIndicator::query_db]);
-        m_errorCode = sqlite3_exec(m_sqltDbPtr, detachSQL.c_str(), nullptr,
-                                   nullptr, nullptr);
-        if (m_errorCode) {
-            std::cerr << "Error in deatach database : " << m_pathToQryDb
-                      << std::endl;
-            std::cerr << "SQL Error: " << sqlite3_errmsg(m_sqltDbPtr);
-            return m_errorCode;
-        }
-
-        m_errorCode = sqlite3_close(m_sqltDbPtr);
-        m_sqltDbPtr = nullptr;
-        m_errorCode = SQLITE_OK;
-        return m_errorCode;
-    }
-
-    virtual int getDBErrorCode() const { return m_errorCode; }
-
-    PFAAI_ERROR_CODE validate() const {
-        if (!isDBOpen()) {
-            std::cerr << "Error in opening " << getDBPath() << std::endl;
-            std::cerr << "DB ERROR: " << getDBError() << std::endl;
-
-            if (getDBError())
-                return PFAAI_ERR_SQLITE_MEM_ALLOC;
-            else
-                return PFAAI_ERR_SQLITE_DB;
-        }
-        return PFAAI_OK;
-    }
-
-    virtual ~QTSQLiteSCPDataBase() {
-        if (m_errorCode == SQLITE_OK && m_sqltDbPtr != nullptr) {
-            closeDB();
-        }
-    }
-
-    const DBMetaData& getMeta() const { return m_dbMeta; }
-
     inline std::string tetraTableName(std::string protein,
                                       DBIndicator dbind) const {
         static const std::string tabNameFmt = "{}.`{}{}`";
@@ -431,14 +315,90 @@ class QTSQLiteSCPDataBase : public DefaultDBInterface<IdType> {
                            m_dbNames.TMTAB_SUFFIX);
     }
 
-    inline std::string formatGenomesTableName(std::string protein,
-                                              DBIndicator dbind) const {
+    inline std::string genomeTableName(std::string protein,
+                                       DBIndicator dbind) const {
         static const std::string tabNameFmt = "{}.`{}{}`";
         return fmt::format(tabNameFmt, c_dbAlias[dbind], protein,
                            m_dbNames.GNMTAB_SUFFIX);
     }
 
-    // Function to query and load counts in the tetramer counts arrary, Lc
+    const char* c_dbAlias[2] = {"main", "QueryDB"};
+
+  public:
+    explicit QTSQLiteSCPDataBase(const std::string& tgtDBPath,
+                                 const std::string& qryDBPath,
+                                 DBNameType dbn = DBNameType())
+        : m_pathToTgtDb(tgtDBPath), m_pathToQryDb(qryDBPath),
+          m_sqltDbPtr(SQLiteHelper::initDB(tgtDBPath, &m_dbErrorCode)),
+          m_dbNames(dbn) {
+        if (m_dbErrorCode) {
+            SQLiteHelper::displayDBError(m_dbErrorCode);
+            return;
+        }
+
+        // Attach database
+        const std::string attachSQL =
+            fmt::format("ATTACH DATABASE '{}' as {} ;", m_pathToQryDb,
+                        c_dbAlias[DBIndicator::query_db]);
+        m_dbErrorCode = sqlite3_exec(m_sqltDbPtr, attachSQL.c_str(), nullptr,
+                                     nullptr, nullptr);
+        if (m_dbErrorCode) {
+            std::cerr << "Error in attaching query database : " << m_pathToQryDb
+                      << std::endl;
+            std::cerr << "SQL Error: " << sqlite3_errmsg(m_sqltDbPtr);
+            return;
+        }
+
+        m_dbMeta = dbMetaData();
+        m_qryGenomeIdOffset = m_dbMeta.genomeSet.size();
+    }
+
+    virtual ~QTSQLiteSCPDataBase() {
+        if (m_dbErrorCode == SQLITE_OK && m_sqltDbPtr != nullptr) {
+            closeDB();
+        }
+    }
+
+    // getter functions
+    virtual inline int getDBErrorCode() const { return m_dbErrorCode; }
+    virtual inline std::string getDBPath() const { return m_pathToTgtDb; }
+    const DBMetaData& getMeta() const { return m_dbMeta; }
+
+    // Functions to close database connections
+    virtual inline int closeDB() {
+        if (m_sqltDbPtr == nullptr) {
+            std::cerr << "Database already closed : " << m_pathToQryDb
+                      << std::endl;
+            return m_dbErrorCode;
+        }
+        // Detach database
+        const std::string detachSQL = fmt::format(
+            "DETACH DATABASE '{}' ;", c_dbAlias[DBIndicator::query_db]);
+        m_dbErrorCode = sqlite3_exec(m_sqltDbPtr, detachSQL.c_str(), nullptr,
+                                     nullptr, nullptr);
+        if (m_dbErrorCode) {
+            std::cerr << "Error in deatach database : " << m_pathToQryDb
+                      << std::endl;
+            std::cerr << "SQL Error: " << sqlite3_errmsg(m_sqltDbPtr);
+            return m_dbErrorCode;
+        }
+
+        m_dbErrorCode = sqlite3_close(m_sqltDbPtr);
+        m_sqltDbPtr = nullptr;
+        m_dbErrorCode = SQLITE_OK;
+        return m_dbErrorCode;
+    }
+
+    PFAAI_ERROR_CODE validate() const {
+        if (m_dbErrorCode != SQLITE_OK || m_sqltDbPtr == nullptr) {
+            std::cerr << "Error in opening " << getDBPath() << std::endl;
+            SQLiteHelper::displayDBError(m_dbErrorCode);
+            return PFAAI_ERR_SQLITE_DB;
+        }
+        return PFAAI_OK;
+    }
+
+    // Function to query and load counts in the tetramer counts array, Lc
     int tetramerOccCounts(const std::string protein, IdPairType tetraRange,
                           std::vector<IdType>& Lc) const {  // NOLINT
 
@@ -586,7 +546,7 @@ class QTSQLiteSCPDataBase : public DefaultDBInterface<IdType> {
             oss << fmt::format(proteinSetTetramerCtQueryFmt,
                                m_dbNames.GNMTAB_COLUMN_GID,
                                m_dbNames.GNMTAB_COLUMN_TMS, proteinIndex,
-                               formatGenomesTableName(protein, dbind));
+                               genomeTableName(protein, dbind));
             if (proteinIndex < proteinEnd) {
                 oss << " UNION ALL ";
             }

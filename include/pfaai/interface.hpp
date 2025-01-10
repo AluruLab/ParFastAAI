@@ -132,11 +132,8 @@ std::ostream& operator<<(std::ostream& ox, ETriple<IT> const& cx) {
     return ox;
 }
 
-
-
 //
-// Class encapsulating the array of triples
-//
+// Class encapsulating the array E, the array of triples
 template <typename IdType> struct EParData {
     using IdTripleT = ETriple<IdType>;
     // tetramer tuples : Array E construction : Phase 2
@@ -164,32 +161,30 @@ class DataBaseInterface {
 
     DataBaseInterface() {}
     virtual ~DataBaseInterface() {}
+    
+    //
+    // Getter functions
+    virtual const DBMetaData& getMeta() const = 0;
+    virtual std::string getDBPath() const = 0;
+    virtual ErrCodeType getDBErrorCode() const = 0;
 
     //
     // Functions that open/close validates database
-    virtual inline bool isDBOpen() const = 0;
-    virtual ErrCodeType getDBErrorCode() const = 0;
-    virtual const char* getDBError() const = 0;
-    virtual std::string getDBPath() const = 0;
+    virtual int closeDB() = 0;
     virtual PFAAI_ERROR_CODE validate() const = 0;
-    virtual inline int closeDB() = 0;
 
     //
-    // Reference functions to get meta data
-    virtual const DBMetaData& getMeta() const = 0;
-
-    //
-    // Function that Queries the database for the number of occurences
+    // Function that Queries the database for the number of occurrences
     // of range tetramers for the given protein.
-    // Assuming that the Lc is a vector of length NTETRAMERS.
+    // Assumes that the Lc is a vector of length NTETRAMERS.
     virtual int tetramerOccCounts(const std::string protein,
                                   IdPairType tetraRange,
                                   std::vector<IdType>& Lc) const = 0;  // NOLINT
     //
     // For a given set of proteins and a range of tetramers,
-    // populates the (protien, genome) pair array.
-    // Assumes that the pair iterator has enough memory locations.
-    // Also returns the number of populated
+    // populates the (protein, genome) pair array.
+    // Assumes that the pair iterator has been allocated with enough memory.
+    // Also returns the number of populated.
     virtual int proteinSetGPPairs(IdPairType tetraRange, PairIterT iterF,
                                   IdType* fCount) const = 0;
     //
@@ -226,8 +221,8 @@ class DataStructInterface {
     // Data structures
     std::vector<IdType> m_Lc;
     std::vector<IdType> m_Lp;
-    std::vector<IdPairType> m_F;
     IdMatrixType m_T;
+    std::vector<IdPairType> m_F;
     EParData<IdType> m_pE;
 
     // Parameters
@@ -254,7 +249,7 @@ class DataStructInterface {
     inline virtual const std::vector<IdPairType>& refF() const { return m_F; }
     inline virtual const EParData<IdType>& refE() const { return m_pE; }
 
-    // Input data ref
+    // Input data reference
     inline virtual const std::vector<std::string>& refProteinSet() const {
         return m_proteinSet;
     }
@@ -264,36 +259,39 @@ class DataStructInterface {
     virtual IdType tgtSetSize() const = 0;
 
     //
-    // Getter functions to dimensions
+    // Getter functions to the dimensions
     virtual inline IdType nTetramers() const { return NTETRAMERS; }
     virtual IdType nGenomePairs() const = 0;
 
     //
-    // When a tetramer occurs nQry times in query genome, nTgt times in
-    //   target genome, returns the number of tuples that should occur
+    // Given that a tetramer occurs nQry times in query genome and nTgt times in
+    //   target genome, the function returns the number of tuples that should
     //   in the E array : array of (protein, genome_A, genome_B) tuples
     virtual IdType countGenomePairs(IdType nQry, IdType nTgt) const = 0;
 
     //
-    // Indicator functions :
-    //   - verify if a genome id is a valid query genome
-    //   - verify if a pair is valid (query, target pair)
-    // The input ids  are what is provided in the 'F' and 'E' array
+    // Indicator functions for genomes :
+    // Accepts genome ids that are used in the 'F' and 'E' array
+    //   - isQryGenome : return true if a genome id is a valid query genome
     virtual bool isQryGenome(IdType genome) const = 0;
+    //   - isValidPair : returns true if a pair is valid (query, target pair)
     virtual bool isValidPair(IdType qry, IdType tgt) const = 0;
 
     //
-    // genomePairToIndex: Jaccard values are computed in a flat JAC Array maps
-    // between the genome_id pair and the index in JAC array
+    // Jaccard values are computed in a flat JAC Array, JAC is the
+    //     total of the number of genome pairs.
+    // genomePairToIndex: maps a genome id pair to the index in JAC array.
     virtual IdType genomePairToIndex(IdType genomeA, IdType genomeB) const = 0;
 
-    // Mapper functions : Used to generate the ouput Matrix
+    //
+    // Mapper functions : Used to generate the output Matrix
     //  -  mapQueryId : maps from the 'genome id used in the data structures' to
     //  the index in output matrix, specifically, 'column index of the matrix'
     virtual IdType mapQueryId(IdType qry) const = 0;
     //  -  mapTargetId : maps from the 'genome id used in the data structures'
     //  the index in output matrix, specifically, 'row index of the matrix'
     virtual IdType mapTargetId(IdType tgt) const = 0;
+
     //
     // Construction functions for Data structures
     virtual std::vector<JACType> initJAC() const = 0;
@@ -304,7 +302,7 @@ class DataStructInterface {
 
     //
     // Main construction function, constructs in the following order:
-    //    Lc -> Lp -> F -> T and, finally E
+    //    Lc -> Lp -> F -> T -> E
     virtual PFAAI_ERROR_CODE construct() {
         timer run_timer;
         m_errorCode = constructL();

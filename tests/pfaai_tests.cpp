@@ -28,20 +28,19 @@
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/vector.hpp>
 
-#include <pfaai/algorithm_impl.hpp>
-#include <pfaai/ds_impl.hpp>
-#include <pfaai/scp_db.hpp>
-
-#include <pfaai/ds_helper.hpp>
-#include <pfaai/interface.hpp>
+#include "pfaai/algorithm_impl.hpp"
+#include "pfaai/ds_helper.hpp"
+#include "pfaai/ds_impl.hpp"
+#include "pfaai/interface.hpp"
+#include "pfaai/scp_db.hpp"
 #include "pfaai_tests.hpp"  // NOLINT
 
 using IdType = int;
 using ValueType = double;
 using IdPairType = DPair<IdType, IdType>;
 using IdMatType = DMatrix<IdType>;
-using SQLiteDBT = SQLiteSCPDataBase<IdType, DatabaseNames>;
-using QTSQLiteDBT = QTSQLiteSCPDataBase<IdType, DatabaseNames>;
+using SQLiteDB = SQLiteSCPDataBase<IdType, DatabaseNames>;
+using QTSQLiteDB = QTSQLiteSCPDataBase<IdType, DatabaseNames>;
 using PFImpl = ParFAAIImpl<IdType, ValueType>;
 using PFDataT = ParFAAIData<IdType>;
 using PFQSubDataT = ParFAAIQSubData<IdType>;
@@ -117,7 +116,7 @@ static constexpr char REF_QT_COMBO_T_MATRIX[] =
     "data/xdb_qt_combo_t_matrix.bin";
 
 TEST_CASE("Query Genome Metadata", "[db_meta_data]") {
-    SQLiteDBT sqlt_if(G_DB_PATH);
+    SQLiteDB sqlt_if(G_DB_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     REQUIRE(G_PROTEINSET == dbMeta.proteinSet);
     REQUIRE(G_GENOMESET == dbMeta.genomeSet);
@@ -125,7 +124,7 @@ TEST_CASE("Query Genome Metadata", "[db_meta_data]") {
 
 TEST_CASE("Query No. of Tetramers", "[ntetramers_query]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0);
-    SQLiteDBT sqlt_if(G_DB_PATH);
+    SQLiteDB sqlt_if(G_DB_PATH);
     sqlt_if.tetramerOccCounts("PF00119.20", IdPairType(2060, 2144), Lc);
     REQUIRE(Lc[2060] == 20);
     REQUIRE(Lc[2100] == 20);
@@ -136,7 +135,7 @@ TEST_CASE("Query No. of Tetramers", "[ntetramers_query]") {
 TEST_CASE("Query Protein Tetramer Counts", "[prot_tetramer_counts]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0), Lp(G_NTETRAMERS, 0);
     IdMatType T(G_PROTEINSET_SIZE, G_GENOMESET_SIZE);
-    SQLiteDBT sqlt_if(G_DB_PATH);
+    SQLiteDB sqlt_if(G_DB_PATH);
     sqlt_if.proteinTetramerCounts(IdPairType(0, 3), T);
     REQUIRE(G_QRY_PST_TETRA_CTS[0] ==
             std::vector<IdType>(T.row_begin(0), T.row_end(0)));
@@ -159,7 +158,7 @@ TEST_CASE("Query Protein Set Tetramers", "[prot_set_tetramers]") {
 
     std::vector<IdPairType> F(Lp.back() + Lc.back(), IdPairType(-1, -1));
     IdType fct = 0;
-    SQLiteDBT sqlt_if(G_DB_PATH);
+    SQLiteDB sqlt_if(G_DB_PATH);
     int rc = sqlt_if.proteinSetGPPairs(IdPairType(2000, 3000), F.begin(), &fct);
     REQUIRE(rc == SQLITE_OK);
     REQUIRE(F[Lp[2000]] == IdPairType(5, 0));
@@ -491,7 +490,7 @@ TEST_CASE("PF Query Subset Test", "[query_subset]") {
 }
 
 TEST_CASE("QT Genome Metadata", "[qt_db_meta_data]") {
-    QTSQLiteDBT sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
+    QTSQLiteDB sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     REQUIRE(G_QT_PROTEINSET == dbMeta.proteinSet);
     REQUIRE(G_QT_TARGET_GENOMESET == dbMeta.genomeSet);
@@ -500,7 +499,7 @@ TEST_CASE("QT Genome Metadata", "[qt_db_meta_data]") {
 
 TEST_CASE("QT No. of Tetramers", "[qt_ntetramers_query]") {
     std::vector<IdType> Lc(G_NTETRAMERS, 0);
-    QTSQLiteDBT sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
+    QTSQLiteDB sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
     sqlt_if.tetramerOccCounts("PF00119.20", IdPairType(1000, 2500), Lc);
     REQUIRE(Lc[1151] == 8);
     REQUIRE(Lc[1255] == 8);
@@ -509,13 +508,13 @@ TEST_CASE("QT No. of Tetramers", "[qt_ntetramers_query]") {
 }
 
 TEST_CASE("QT Protein Tetramer Counts", "[qt_prot_tetramer_counts]") {
-    QTSQLiteDBT qtsqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
+    QTSQLiteDB qtsqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
     const DBMetaData& dbMeta = qtsqlt_if.getMeta();
     IdMatType T(G_PROTEINSET_SIZE, G_QT_GENOMESET_SIZE);
     qtsqlt_if.proteinTetramerCounts(IdPairType(0, dbMeta.proteinSet.size() - 1),
                                     T);
 
-    SQLiteDBT sqlt_if(G_DB_SUBSET_COMBO_12_PATH);
+    SQLiteDB sqlt_if(G_DB_SUBSET_COMBO_12_PATH);
     const DBMetaData& dbMeta2 = sqlt_if.getMeta();
     IdMatType T2(dbMeta2.proteinSet.size(), dbMeta2.genomeSet.size());
     sqlt_if.proteinTetramerCounts(IdPairType(0, dbMeta.proteinSet.size()), T2);
@@ -548,7 +547,7 @@ void constructL(const std::vector<std::string>& protSet,
 }
 
 TEST_CASE("QT Protein Set Tetramers", "[qt_prot_set_tetramers]") {
-    QTSQLiteDBT qtsqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
+    QTSQLiteDB qtsqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
     std::vector<IdType> Lc(G_NTETRAMERS, 0), Lp(G_NTETRAMERS, 0);
     // construct L
     constructL(qtsqlt_if.getMeta().proteinSet, qtsqlt_if, Lc, Lp);
@@ -571,7 +570,7 @@ TEST_CASE("QT Protein Set Tetramers", "[qt_prot_set_tetramers]") {
 }
 
 TEST_CASE("QT Test Data Structures Construction", "[qt_construct_LFTE]") {
-    QTSQLiteDBT sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
+    QTSQLiteDB sqlt_if(G_DB_SUBSET1_PATH, G_DB_SUBSET2_PATH);
     const DBMetaData& dbMeta = sqlt_if.getMeta();
     //
     PFQTData pfaaiQTData(sqlt_if, dbMeta, dbMeta.proteinSet);
