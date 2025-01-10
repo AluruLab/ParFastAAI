@@ -90,20 +90,17 @@ struct DataStructHelper {
         {
             int nThreads = omp_get_num_threads();
             int threadID = omp_get_thread_num();
-            IdType tetraStart =
-                BLOCK_LOW(threadID, nThreads, DataStructIfx::NTETRAMERS);
-            IdType tetraEnd =
-                BLOCK_HIGH(threadID, nThreads, DataStructIfx::NTETRAMERS);
+            IdPairType tetraRange(
+                BLOCK_LOW(threadID, nThreads, DataStructIfx::NTETRAMERS),
+                BLOCK_HIGH(threadID, nThreads, DataStructIfx::NTETRAMERS));
 #pragma omp single
             {
-                errCodes.resize(nThreads, 0);
+                errCodes.resize(nThreads, SQLITE_OK);
             }
-
             for (const std::string& protein : dataStruct.refProteinSet()) {
-                int qryErrCode = inDBIf.tetramerOccCounts(
-                    protein, IdPairType(tetraStart, tetraEnd), Lc);
-                if (qryErrCode != SQLITE_OK) {
-                    errCodes[threadID] = qryErrCode;
+                int errCode = inDBIf.tetramerOccCounts(protein, tetraRange, Lc);
+                if (errCode != SQLITE_OK) {
+                    errCodes[threadID] = errCode;
                 }
             }
         }

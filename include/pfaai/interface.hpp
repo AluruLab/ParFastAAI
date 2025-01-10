@@ -23,6 +23,7 @@
 #define PFAAI_INTERFACE_HPP
 
 #include <cassert>
+#include <initializer_list>
 #include <iostream>
 #include <ostream>
 #include <string>
@@ -58,6 +59,8 @@ template <typename DT1, typename DT2> struct DPair {
     DT2 second;
     explicit DPair(DT1 a, DT2 b) : first(a), second(b) {}
     DPair() : first(DT1(-1)), second(DT2(-1)) {}
+    DPair(std::initializer_list<DT1> l)
+        : first(*l.begin()), second(*(l.begin() + 1)) {}
     DPair(const DPair& other) : first(other.first), second(other.second) {}
     const DPair& operator=(const DPair& other) {
         first = other.first;

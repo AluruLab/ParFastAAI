@@ -54,6 +54,12 @@ struct DatabaseNames {
 };
 
 struct SQLiteHelper {
+    static sqlite3* initDB(const std::string dbPath, int* errorCode) {
+        sqlite3* db;
+        *errorCode = sqlite3_open(dbPath.c_str(), &db);
+        return db;
+    }
+
     // Function to query set of genomes in sqlite db
     template <typename DBNameType>
     static int dbGenomeSet(const DBNameType& dbNames, sqlite3* sqltDbPtr,
@@ -105,6 +111,65 @@ struct SQLiteHelper {
         return SQLITE_OK;
     }
 
+    template <typename DBNameType>
+    static int qtDBProteinSet(const DBNameType& dbNames, sqlite3* sqltDbPtr,
+                              const std::string& mainTableName,
+                              const std::string& qryTableName,
+                              std::vector<std::string>& proteinSet) {  // NOLINT
+        const char* ctQueryFormat =
+            "SELECT COUNT(DISTINCT target_table.{0}) \n"
+            "  FROM {1} as target_table, {2} as query_table \n"
+            "  WHERE target_table.{0} = query_table.{0};";
+        std::string sqlQuery =
+            fmt::format(ctQueryFormat, dbNames.SCPDTAB_COLUMN_ACC,
+                        mainTableName, qryTableName);
+        sqlite3_stmt* statement;
+        int errorCode = sqlite3_prepare_v2(sqltDbPtr, sqlQuery.c_str(), -1,
+                                           &statement, nullptr);
+
+        if (errorCode != SQLITE_OK) {
+            std::cerr << "Error in preparing sql statement " << sqlQuery
+                      << std::endl;
+            std::cerr << "The error was: " << sqlite3_errmsg(sqltDbPtr);
+            return errorCode;
+        }
+
+        if (sqlite3_step(statement) == SQLITE_ROW) {
+            int scpCount = sqlite3_column_int(statement, 0);
+            proteinSet.resize(scpCount);
+        }
+        sqlite3_finalize(statement);
+        statement = NULL;
+
+        const char* queryFormat =
+            "SELECT DISTINCT target_table.{0} \n"
+            "  FROM {1} as target_table, {2} as query_table \n"
+            "  WHERE target_table.{0} = query_table.{0};";
+
+        // sqlQuery = "SELECT scp_acc from " + _dbNames.SCPDTAB;
+        sqlQuery = fmt::format(queryFormat, dbNames.SCPDTAB_COLUMN_ACC,
+                               mainTableName, qryTableName);
+        errorCode = sqlite3_prepare_v2(sqltDbPtr, sqlQuery.c_str(), -1,
+                                       &statement, nullptr);
+        if (errorCode != SQLITE_OK) {
+            std::cerr << "Error in preparing sql statement " << sqlQuery
+                      << std::endl;
+            std::cerr << "The error was: " << sqlite3_errmsg(sqltDbPtr);
+            return errorCode;
+        }
+
+        int index = 0;
+        while (sqlite3_step(statement) == SQLITE_ROW) {
+            const unsigned char* scp_acc = sqlite3_column_text(statement, 0);
+            std::string proteinName(reinterpret_cast<const char*>(scp_acc));
+            proteinSet[index] = proteinName;
+            index++;
+        }
+
+        sqlite3_finalize(statement);
+        return errorCode;
+    }
+
     // Function to query set of proteins
     template <typename DBNameType>
     static int dbProteinSet(const DBNameType& dbNames, sqlite3* sqltDbPtr,
@@ -112,7 +177,7 @@ struct SQLiteHelper {
         sqlite3_stmt* statement;
         const std::string protCountQueryFmt =
             "SELECT count(DISTINCT {}) FROM {}";
-        // sqlQuery = "SELECT count(*) from " + _dbNames.SCPDTAB;
+        // sqlQuery = "SELECT count(*) from " + ;
         std::string sqlQuery = fmt::format(
             protCountQueryFmt, dbNames.SCPDTAB_COLUMN_ACC, dbNames.SCPDTAB);
         int errorCode = sqlite3_prepare_v2(sqltDbPtr, sqlQuery.c_str(), -1,
@@ -169,7 +234,7 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
     DBMetaData m_dbMeta;
 
     // Function to load meta data : genome and protein sets
-    DBMetaData dbMetaData() {  // NOLINT
+    DBMetaData dbMetaData() {
         DBMetaData dbMeta;
 
         m_dbErrorCode = SQLiteHelper::dbProteinSet(m_dbNames, m_sqltDbPtr,
@@ -187,15 +252,10 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
     using IdMatType = typename ParentT::IdMatType;
     using PairIterT = typename ParentT::PairIterT;
 
-    static sqlite3* initDB(const std::string dbPath, int* errorCode) {
-        sqlite3* db;
-        *errorCode = sqlite3_open(dbPath.c_str(), &db);
-        return db;
-    }
-
     explicit SQLiteInterface(const std::string dbPath,
                              DBNameType dbn = DBNameType())
-        : m_pathToDb(dbPath), m_sqltDbPtr(initDB(dbPath, &m_dbErrorCode)),
+        : m_pathToDb(dbPath),
+          m_sqltDbPtr(SQLiteHelper::initDB(dbPath, &m_dbErrorCode)),
           m_dbNames(dbn), m_dbMeta(dbMetaData()) {}
 
     // Functions to open/close/validate database connections
@@ -216,10 +276,14 @@ class SQLiteInterface : public DefaultDBInterface<IdType> {
     }
 
     virtual inline int closeDB() {
-        int errorCode = sqlite3_close(m_sqltDbPtr);
+        if (m_sqltDbPtr == nullptr) {
+            std::cerr << "Database already closed : " << m_pathToDb
+                      << std::endl;
+            return m_dbErrorCode;
+        }
+        m_dbErrorCode = sqlite3_close(m_sqltDbPtr);
         m_sqltDbPtr = nullptr;
-        m_dbErrorCode = SQLITE_OK;
-        return errorCode;
+        return m_dbErrorCode;
     }
 
     virtual int getDBErrorCode() const { return m_dbErrorCode; }
@@ -399,11 +463,17 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
     int m_errorCode;
     DBNameType m_dbNames;
     DBMetaData m_dbMeta;
+    IdType m_qryGenomeIdOffset;
 
-    DBMetaData dbMetaData() {  // NOLINT
+    DBMetaData dbMetaData() {
         DBMetaData dbMeta;
-        m_errorCode = SQLiteHelper::dbProteinSet(m_dbNames, m_sqltDbPtr,
-                                                 dbMeta.proteinSet);
+        m_errorCode = SQLiteHelper::qtDBProteinSet(
+            m_dbNames, m_sqltDbPtr,
+            fmt::format("`{}`.{}", c_dbAlias[DBIndicator::target_db],
+                        m_dbNames.SCPDTAB),
+            fmt::format("`{}`.{}", c_dbAlias[DBIndicator::query_db],
+                        m_dbNames.SCPDTAB),
+            dbMeta.proteinSet);
         if (m_errorCode == SQLITE_OK) {
             m_errorCode = SQLiteHelper::dbGenomeSet(
                 m_dbNames, m_sqltDbPtr,
@@ -421,10 +491,6 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
         return dbMeta;
     }
 
-    IdType (*m_tgtIdMapper)(IdType);
-    IdType (*m_qryIdMapper)(IdType);
-    IdType m_qryIdOffset;
-
   public:
     using ParentT = DefaultDBInterface<IdType>;
     using IdPairType = typename ParentT::IdPairType;
@@ -435,17 +501,12 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
     };
     const char* c_dbAlias[2] = {"main", "QueryDB"};
 
-    static sqlite3* initDB(const std::string dbPath, int* errorCode) {
-        sqlite3* db;
-        *errorCode = sqlite3_open(dbPath.c_str(), &db);
-        return db;
-    }
-
-    explicit QTSQLiteInterface(const std::string& qryDBPath,
-                               const std::string& tgtDBPath,
+    explicit QTSQLiteInterface(const std::string& tgtDBPath,
+                               const std::string& qryDBPath,
                                DBNameType dbn = DBNameType())
-        : m_pathToQryDb(qryDBPath), m_pathToTgtDb(tgtDBPath),
-          m_sqltDbPtr(initDB(tgtDBPath, &m_errorCode)), m_dbNames(dbn) {
+        : m_pathToTgtDb(tgtDBPath), m_pathToQryDb(qryDBPath),
+          m_sqltDbPtr(SQLiteHelper::initDB(tgtDBPath, &m_errorCode)),
+          m_dbNames(dbn) {
         if (m_errorCode) {
             getDBError();
             return;
@@ -466,11 +527,7 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
 
         m_dbMeta = dbMetaData();
         //  Initalize target and query id mappers
-        m_qryIdOffset = m_dbMeta.proteinSet.size();
-        m_tgtIdMapper = [](IdType tid) { return tid; };
-        // TODO fix this
-        // m_qryIdMapper = [this](IdType qid) { return m_qryIdOffset + qid; };
-        m_qryIdMapper = [](IdType qid) { return 700 + qid; };
+        m_qryGenomeIdOffset = m_dbMeta.genomeSet.size();
     }
 
     virtual inline bool isDBOpen() const {
@@ -490,13 +547,18 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
     }
 
     virtual inline int closeDB() {
+        if (m_sqltDbPtr == nullptr) {
+            std::cerr << "Database already closed : " << m_pathToQryDb
+                      << std::endl;
+            return m_errorCode;
+        }
         // Detach database
-        const std::string detachSQL =
-            fmt::format("DETACH DATABASE '{}' ;", m_pathToQryDb);
+        const std::string detachSQL = fmt::format(
+            "DETACH DATABASE '{}' ;", c_dbAlias[DBIndicator::query_db]);
         m_errorCode = sqlite3_exec(m_sqltDbPtr, detachSQL.c_str(), nullptr,
                                    nullptr, nullptr);
         if (m_errorCode) {
-            std::cerr << "Error in deatach query database : " << m_pathToQryDb
+            std::cerr << "Error in deatach database : " << m_pathToQryDb
                       << std::endl;
             std::cerr << "SQL Error: " << sqlite3_errmsg(m_sqltDbPtr);
             return m_errorCode;
@@ -531,8 +593,8 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
 
     const DBMetaData& getMeta() const { return m_dbMeta; }
 
-    inline std::string formatTetraTableName(std::string protein,
-                                            DBIndicator dbind) const {
+    inline std::string tetraTableName(std::string protein,
+                                      DBIndicator dbind) const {
         static const std::string tabNameFmt = "{}.`{}{}`";
         return fmt::format(tabNameFmt, c_dbAlias[dbind], protein,
                            m_dbNames.TMTAB_SUFFIX);
@@ -554,17 +616,17 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
 
         const char* queryFormat = "SELECT target_table.{} as tetramer,"
                                   "    target_table.{} as target_genomes,"
-                                  "    query_table.{} as query_genomes"
+                                  "    query_table.{} as query_genomes "
                                   "FROM {} as target_table, "
-                                  "     {} as query_table"
-                                  "WHERE target_table.{} = query_table.{}"
+                                  "     {} as query_table "
+                                  "WHERE target_table.{} = query_table.{} "
                                   "  AND target_table.{} BETWEEN ? AND ?";
 
         std::string sqlQuery =
             fmt::format(queryFormat, m_dbNames.TMTAB_COLUMN_TT,
                         m_dbNames.TMTAB_COLUMN_GM, m_dbNames.TMTAB_COLUMN_GM,
-                        formatTetraTableName(protein, DBIndicator::target_db),
-                        formatTetraTableName(protein, DBIndicator::query_db),
+                        tetraTableName(protein, DBIndicator::target_db),
+                        tetraTableName(protein, DBIndicator::query_db),
                         m_dbNames.TMTAB_COLUMN_TT, m_dbNames.TMTAB_COLUMN_TT,
                         m_dbNames.TMTAB_COLUMN_TT);
 
@@ -603,36 +665,29 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
 
         std::ostringstream oss;
         // Query to jointly from both databases
-        const char* queryFormat = "SELECT target_table.{0} as tetramer,"
-                                  "    target_table.{1} as target_genomes,"
-                                  "    query_table.{1} as query_genomes, "
-                                  "    {2} as source_table, "
-                                  "FROM {3} as target_table, "
-                                  "     {4} as query_table"
-                                  "WHERE target_table.{0} = query_table.{0}"
-                                  "  AND target_table.{0} BETWEEN {5} AND {6}";
+        const char* queryFormat = "SELECT target_table.{0} as tetramer, \n"
+                                  "    target_table.{1} as target_genomes,\n"
+                                  "    query_table.{1} as query_genomes, \n"
+                                  "    {2} as source_table \n"
+                                  "FROM {3} as target_table, \n"
+                                  "     {4} as query_table \n"
+                                  "WHERE target_table.{0} = query_table.{0} \n"
+                                  "  AND target_table.{0} BETWEEN {5} AND {6} ";
 
         for (std::size_t pIndex = 0; pIndex < proteinSet.size(); pIndex++) {
             const std::string protein = proteinSet[pIndex];
 
             // Qualified table names
-            std::string targetProtTable(
-                formatTetraTableName(protein, DBIndicator::target_db)),
-                qryProtTable(
-                    formatTetraTableName(protein, DBIndicator::query_db));
-
-            //
-            oss << fmt::format(
-                queryFormat, m_dbNames.TMTAB_COLUMN_TT,
-                m_dbNames.TMTAB_COLUMN_GM, pIndex,
-                formatTetraTableName(protein, DBIndicator::target_db),
-                formatTetraTableName(protein, DBIndicator::query_db),
-                tetramerStart, tetramerEnd);
+            oss << fmt::format(queryFormat, m_dbNames.TMTAB_COLUMN_TT,
+                               m_dbNames.TMTAB_COLUMN_GM, pIndex,
+                               tetraTableName(protein, DBIndicator::target_db),
+                               tetraTableName(protein, DBIndicator::query_db),
+                               tetramerStart, tetramerEnd);
             if (pIndex < proteinSet.size() - 1) {
-                oss << " UNION ALL ";
+                oss << "\n UNION ALL \n";
             }
         }
-        oss << " ORDER BY " << m_dbNames.TMTAB_COLUMN_TT << ", source_table";
+        oss << "\n ORDER BY " << m_dbNames.TMTAB_COLUMN_TT << ", source_table";
 
         std::string sqlQuery = oss.str();
         sqlite3_stmt* statement;
@@ -656,25 +711,25 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
                 size_t sizeOfQryBlob = sqlite3_column_bytes(statement, 2);
                 int tgtGenomes = sizeOfTargetBlob / sizeof(int);
                 int qryGenomes = sizeOfQryBlob / sizeof(int);
-                int countGenomes = sizeOfTargetBlob / sizeof(int);
+                int countGenomes = tgtGenomes + qryGenomes;
 
-                // genome array from query table
+                // genome array from target table
                 const int* genomeArray = static_cast<const int*>(tgtBlob);
-                std::transform(genomeArray, genomeArray + tgtGenomes, iterF,
-                               [&proteinIndex, this](const int& genomeID) {
-                                   return IdPairType(
-                                       proteinIndex,
-                                       this->m_tgtIdMapper(genomeID));
-                               });
-                genomeArray = static_cast<const int*>(tgtBlob);
-                std::transform(genomeArray + tgtGenomes,
-                               genomeArray + countGenomes, iterF + tgtGenomes,
-                               [&proteinIndex, this](const int& genomeID) {
-                                   return IdPairType(
-                                       proteinIndex,
-                                       this->m_qryIdMapper(genomeID));
-                               });
-                (*fCount) += countGenomes;
+                for (int i = 0; i < tgtGenomes; i++) {
+                    int genomeID = genomeArray[i];
+                    *iterF = IdPairType(proteinIndex, genomeID);
+                    (*fCount)++;
+                    iterF++;
+                }
+                // genome array from query table
+                genomeArray = static_cast<const int*>(qryBlob);
+                for (int i = 0; i < qryGenomes; i++) {
+                    int genomeID = genomeArray[i];
+                    *iterF = IdPairType(proteinIndex,
+                                        m_qryGenomeIdOffset + genomeID);
+                    (*fCount)++;
+                    iterF++;
+                }
             }
         }
 
@@ -723,7 +778,7 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
                 int sizeOfBlobInBytes = sqlite3_column_int(statement, 1);
                 int countTetras = sizeOfBlobInBytes / sizeof(int);
                 int proteinIndex = sqlite3_column_int(statement, 2);
-                T(proteinIndex,  gidMapFn(genomeID)) += countTetras;
+                T(proteinIndex, gidMapFn(genomeID)) += countTetras;
             }
         }
 
@@ -739,7 +794,7 @@ class QTSQLiteInterface : public DefaultDBInterface<IdType> {
             T);
         dbProteinTetramerCounts(
             protRange, DBIndicator::query_db,
-            [&](IdType gid) { return m_qryIdOffset + gid; }, T);
+            [&](IdType gid) { return m_dbMeta.genomeSet.size() + gid; }, T);
         return SQLITE_OK;
     }
 };
